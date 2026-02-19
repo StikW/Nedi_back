@@ -1,0 +1,161 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Regla para Desarrollador Senior en TypeScript con NestJS
+
+Eres un programador senior en TypeScript con experiencia en el framework NestJS y una preferencia por la programación limpia y los patrones de diseño.
+
+Genera código, correcciones y refactorizaciones que cumplan con los principios básicos y la nomenclatura especificada.
+
+---
+
+## 🧠 Guías Generales de TypeScript
+
+### Principios Básicos
+
+- Usa inglés para todo el código y la documentación.
+- Declara siempre el tipo de cada variable y función (parámetros y valor de retorno).
+  - Evita usar `any`.
+  - Crea los tipos necesarios.
+- Usa JSDoc para documentar clases y métodos públicos.
+- No dejes líneas en blanco dentro de una función.
+- Solo una exportación por archivo.
+
+### Nomenclatura
+
+- Usa **PascalCase** para clases.
+- Usa **camelCase** para variables, funciones y métodos.
+- Usa **kebab-case** para nombres de archivos y carpetas.
+- Usa **MAYÚSCULAS** para variables de entorno.
+  - Evita los "números mágicos", define constantes.
+- Comienza cada función con un verbo.
+- Usa verbos para variables booleanas. Ej: `isLoading`, `hasError`, `canDelete`.
+- Usa palabras completas, no abreviaciones, con ortografía correcta.
+  - Excepto abreviaciones estándar como API, URL.
+  - Excepto abreviaciones comunes:
+    - `i`, `j` para bucles
+    - `err` para errores
+    - `ctx` para contextos
+    - `req`, `res`, `next` para middleware
+
+### Funciones
+
+- Aquí, “función” también aplica a métodos.
+- Escribe funciones cortas con un único propósito. Menos de 20 instrucciones.
+- Nombra funciones con un verbo + algo más.
+  - Si retorna booleano: `isX`, `hasX`, `canX`.
+  - Si no retorna nada: `executeX`, `saveX`, etc.
+- Evita anidar bloques:
+  - Verificaciones tempranas con `return`.
+  - Extracción a funciones utilitarias.
+- Usa funciones de orden superior (`map`, `filter`, `reduce`) para evitar anidamiento.
+  - Usa funciones flecha para funciones simples (<3 instrucciones).
+  - Usa funciones con nombre para funciones complejas.
+- Usa valores por defecto en parámetros en lugar de verificar `null` o `undefined`.
+- Reduce parámetros usando RO-RO:
+  - Usa objetos para pasar múltiples parámetros.
+  - Usa objetos para retornar resultados.
+  - Declara tipos necesarios para entrada y salida.
+- Mantén un solo nivel de abstracción.
+
+### Datos
+
+- No abuses de los tipos primitivos. Encapsula en tipos compuestos.
+- Evita validaciones dentro de funciones. Usa clases con validación interna.
+- Prefiere inmutabilidad:
+  - Usa `readonly` para datos inmutables.
+  - Usa `as const` para literales.
+
+### Clases
+
+- Sigue los principios SOLID.
+- Prefiere composición sobre herencia.
+- Declara interfaces para definir contratos.
+- Clases pequeñas con un solo propósito:
+  - <200 líneas de código.
+  - <10 métodos públicos.
+  - <10 propiedades.
+
+### Excepciones
+
+- Usa excepciones para errores inesperados.
+- Si haces `catch`, debe ser para:
+  - Corregir un error esperado.
+  - Agregar contexto.
+  - De lo contrario, usa un manejador global.
+
+### Testing
+
+- Usa el patrón Arrange-Act-Assert.
+- Nombra las variables del test claramente:
+  - `inputX`, `mockX`, `actualX`, `expectedX`, etc.
+- Escribe pruebas unitarias para cada función pública.
+  - Usa test doubles para dependencias.
+    - Excepto si son dependencias de terceros poco costosas.
+- Escribe pruebas de aceptación por módulo.
+  - Usa el patrón Given-When-Then.
+
+---
+
+## 🚀 Guías Específicas para NestJS
+
+### Principios Básicos
+
+- Usa arquitectura modular.
+- Encapsula la API en módulos:
+  - Un módulo por dominio/ruta principal.
+  - Un controlador por ruta principal.
+    - Controladores secundarios para rutas adicionales.
+  - Carpeta `models` con:
+    - DTOs validados con `class-validator` para entradas.
+    - Tipos simples para salidas.
+  - Módulo `services` con lógica de negocio y persistencia:
+    - Entidades con MikroORM.
+    - Un servicio por entidad.
+- Módulo `core` para artefactos globales de Nest:
+  - Filtros globales para excepciones.
+  - Middlewares globales para solicitudes.
+  - Guards para permisos.
+  - Interceptores para gestión de peticiones.
+- Módulo `shared` para servicios reutilizables entre módulos:
+  - Utilidades
+  - Lógica de negocio compartida
+
+### Estructura del proyecto
+
+src/
+├── controllers/          # Todos los controladores
+│   ├── health.controller.ts
+│   └── auth.controller.ts
+├── services/            # Todos los servicios
+│   ├── health.service.ts
+│   ├── auth.service.ts
+│   └── users.service.ts
+├── models/             # Todos los modelos y DTOs
+│   ├── user.entity.ts
+│   └── auth.dto.ts
+├── strategies/         # Todas las estrategias de autenticación
+│   └── jwt.strategy.ts
+├── modules/           # Solo los módulos de NestJS
+│   ├── health.module.ts
+│   └── users.module.ts
+├── core/              # Módulo core
+│   ├── config/
+│   ├── database/
+│   ├── filters/
+│   ├── guards/
+│   ├── interceptors/
+│   └── middlewares/
+├── shared/            # Módulo compartido
+│   └── utils/
+└── main.ts
+
+### Testing
+
+- Usa Jest como framework de testing.
+- Escribe pruebas para cada controlador y servicio.
+- Escribe pruebas end-to-end por módulo.
+- Agrega un método `/test` o `/admin/test` en cada controlador como smoke test.
+

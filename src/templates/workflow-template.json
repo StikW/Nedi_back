@@ -1,0 +1,1249 @@
+{
+    "name": "{{workflowName}}",
+    "nodes": [
+      {
+        "parameters": {
+          "updates": [
+            "messages"
+          ],
+          "options": {
+            "messageStatusUpdates": []
+          }
+        },
+        "type": "n8n-nodes-base.whatsAppTrigger",
+        "typeVersion": 1,
+        "position": [
+          -3232,
+          -208
+        ],
+        "id": "1ad3cf81-6e69-487c-999b-1492ab6ee8ff",
+        "name": "WhatsApp Trigger",
+        "webhookId": "330aaea7-eb9c-4ff1-8ffd-3ffff76f3c18",
+        "credentials": {
+          "whatsAppTriggerApi": {
+            "id": "{{whatsAppTriggerApiId}}",
+            "name": "{{whatsAppTriggerApiName}}"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "promptType": "define",
+          "text": "={{ $json.concat_message }}",
+          "options": {
+            "systemMessage": "Eres un instructor virtual especializado en cursos cortos. \nTu función es reforzar los conocimientos de los estudiantes, pero únicamente en los cursos que tienen disponibles en el sistema.\n\n## Reglas principales:\n- **Nunca inventes valores.** \n  - El `courseId` es un UUID que proviene exclusivamente de la tool `validation_course`. \n  - El `moduleId` es un UUID que proviene exclusivamente de la tool `validation_module_progress`.\n- **Siempre usa las tools.** No trabajes con la memoria ni con interacciones anteriores. \n- Valida cursos, módulos y recursos cada vez que el estudiante pregunte o quiera continuar, ya que la información se actualiza dinámicamente. \n\n## Flujo de trabajo:\n1. **Validación de cursos**\n   - Siempre inicia llamando a la tool `validation_course`. \n   - Si no retorna cursos o el estudiante no tiene ninguno:\n     > \"comunícate con el instructor para que te registre\".\n   - Si hay varios cursos, pregunta al estudiante cuál quiere trabajar.  \n   - Si solo hay uno, selecciona ese directamente.\n\n2. **Validación de módulos**\n   - Para usar la tool `validation_module_progress`, primero debes obtener el `courseId` de `validation_course`.  \n   - Llama a `validation_module_progress(courseId)` y obtén los módulos pendientes.  \n   - Selecciona el **primer módulo pendiente** para trabajar.\n\n3. **Validación de recursos**\n   - Con el `courseId` (de `validation_course`) y el `moduleId` (de `validation_module_progress`), llama a `get_resources`.  \n   - Siempre vuelve a llamar esta tool al entrar en un módulo o cuando el estudiante pregunte, porque los recursos cambian dinámicamente.  \n\n4. **Interacción pedagógica**\n   - Usa los recursos obtenidos para formular preguntas al estudiante.  \n   - Haz **una sola pregunta a la vez**.  \n   - Sé dinámico: combina preguntas de memoria, aplicación y reflexión.  \n   - No avances a otro módulo hasta recorrer bien los recursos.  \n   - Cuando un módulo termine, sugiere continuar con otro, validando de nuevo con las tools.\n\n5. **Estilo de comunicación**\n   - Saluda con cortesía y mantén un tono amable.  \n   - Sé proactivo (no esperes demasiado permiso), pero no acelerado.  \n   - Motiva al estudiante durante la sesión.  \n\n## Tools disponibles:\n- `validation_course` → retorna `{ courseId (UUID), title, status }` de los cursos registrados.  \n- `validation_module_progress(courseId)` → retorna los módulos pendientes, cada uno con un `moduleId (UUID)`.  \n- `get_resources(courseId, moduleId)` → retorna los recursos del módulo.  \n\n## Restricciones:\n- **Nunca inventes ni asumas valores de courseId o moduleId. Úsalos siempre tal como aparecen en las tools.**  \n- Siempre valida cursos, módulos y recursos antes de usarlos.  \n- No muestres detalles técnicos de las tools al estudiante.  \n- Si no hay cursos, responde únicamente con:  \n  > \"comunícate con el instructor para que te registre\".\n"
+          }
+        },
+        "type": "@n8n/n8n-nodes-langchain.agent",
+        "typeVersion": 2.2,
+        "position": [
+          1136,
+          -192
+        ],
+        "id": "25e69107-295f-4ce8-b99c-321bf59477e0",
+        "name": "AI Agent"
+      },
+      {
+        "parameters": {
+          "sessionIdType": "customKey",
+          "sessionKey": "={{ $('WhatsApp Trigger').item.json.contacts[0].wa_id }}"
+        },
+        "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+        "typeVersion": 1.3,
+        "position": [
+          1120,
+          192
+        ],
+        "id": "b6ee2902-5b55-4a67-8170-4954fab7db7b",
+        "name": "Simple Memory"
+      },
+      {
+        "parameters": {
+          "model": {
+            "__rl": true,
+            "value": "gpt-4.1-mini",
+            "mode": "list",
+            "cachedResultName": "gpt-4.1-mini"
+          },
+          "options": {}
+        },
+        "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+        "typeVersion": 1.2,
+        "position": [
+          1008,
+          48
+        ],
+        "id": "984a47ff-6510-4649-9024-a69c5a257478",
+        "name": "OpenAI Chat Model",
+        "credentials": {
+          "openAiApi": {
+            "id": "{{openAiApiId}}",
+            "name": "{{openAiApiName}}"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "operation": "send",
+          "phoneNumberId": "={{ $('WhatsApp Trigger').item.json.metadata.phone_number_id }}",
+          "recipientPhoneNumber": "={{ $('WhatsApp Trigger').item.json.messages[0].from }}",
+          "textBody": "={{ $json.output }}",
+          "additionalFields": {}
+        },
+        "type": "n8n-nodes-base.whatsApp",
+        "typeVersion": 1,
+        "position": [
+          1552,
+          -192
+        ],
+        "id": "35063da4-42fd-4722-b85a-8019c069a766",
+        "name": "Send message",
+        "webhookId": "26da94bb-180e-4040-8200-e77884a4424a",
+        "credentials": {
+          "whatsAppApi": {
+            "id": "{{whatsAppApiId}}",
+            "name": "{{whatsAppApiName}}"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "workflowId": {
+            "__rl": true,
+            "value": "EsI4LqQtMVFGYkCN",
+            "mode": "list",
+            "cachedResultName": "Validación de cursos"
+          },
+          "workflowInputs": {
+            "mappingMode": "defineBelow",
+            "value": {
+              "phoneNumber": "={{ $('WhatsApp Trigger').item.json.messages[0].from }}",
+              "instructorId": "{{instructorId}}"
+            },
+            "matchingColumns": [],
+            "schema": [
+              {
+                "id": "phoneNumber",
+                "displayName": "phoneNumber",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "string"
+              },
+              {
+                "id": "instructorId",
+                "displayName": "instructorId",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "string"
+              }
+            ],
+            "attemptToConvertTypes": false,
+            "convertFieldsToString": false
+          }
+        },
+        "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+        "typeVersion": 2.2,
+        "position": [
+          1248,
+          144
+        ],
+        "id": "b1e3b3c1-e783-4218-9cfe-77615af7c958",
+        "name": "validation_course"
+      },
+      {
+        "parameters": {
+          "workflowId": {
+            "__rl": true,
+            "value": "FqQyyJsHiHdSFwIo",
+            "mode": "list",
+            "cachedResultName": "Validación de avance modulo"
+          },
+          "workflowInputs": {
+            "mappingMode": "defineBelow",
+            "value": {
+              "courseId": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('courseId', `Este valor es un uuid que debe provenir de la tool llamada validation_course`, 'string') }}",
+              "phoneNumber": "={{ $('WhatsApp Trigger').item.json.messages[0].from }}"
+            },
+            "matchingColumns": [],
+            "schema": [
+              {
+                "id": "phoneNumber",
+                "displayName": "phoneNumber",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "string"
+              },
+              {
+                "id": "courseId",
+                "displayName": "courseId",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "string"
+              }
+            ],
+            "attemptToConvertTypes": false,
+            "convertFieldsToString": false
+          }
+        },
+        "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+        "typeVersion": 2.2,
+        "position": [
+          1360,
+          256
+        ],
+        "id": "5e38f842-6c9d-4368-86f1-1015f03ab5fd",
+        "name": "validation_module_progress"
+      },
+      {
+        "parameters": {
+          "toolDescription": "Hace una solicitud al endpoint del back para registrar que el usuario ya terminó un módulo",
+          "method": "POST",
+          "url": "http://localhost:3000/module-progress/complete",
+          "authentication": "genericCredentialType",
+          "genericAuthType": "httpHeaderAuth",
+          "sendBody": true,
+          "bodyParameters": {
+            "parameters": [
+              {
+                "name": "phoneNumber",
+                "value": "={{ $('WhatsApp Trigger').item.json.contacts[0].wa_id }}"
+              },
+              {
+                "name": "moduleId",
+                "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('parameters1_Value', ``, 'string') }}"
+              },
+              {
+                "name": "courseId",
+                "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('parameters2_Value', ``, 'string') }}"
+              }
+            ]
+          },
+          "options": {}
+        },
+        "type": "n8n-nodes-base.httpRequestTool",
+        "typeVersion": 4.2,
+        "position": [
+          1472,
+          160
+        ],
+        "id": "de1031f5-3e5b-4565-88d7-a685e0e45a13",
+        "name": "finish_module",
+        "credentials": {
+          "httpBearerAuth": {
+            "id": "lvxdX29BvtbZsTse",
+            "name": "Bearer Auth account"
+          },
+          "httpHeaderAuth": {
+            "id": "cMqFuqXs77nVlga3",
+            "name": "auth_complete_module"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "workflowId": {
+            "__rl": true,
+            "value": "fjdXuIY6H57sx3YX",
+            "mode": "list",
+            "cachedResultName": "Get s3 data"
+          },
+          "workflowInputs": {
+            "mappingMode": "defineBelow",
+            "value": {
+              "course": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('course', ``, 'string') }}",
+              "module": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('module', ``, 'string') }}"
+            },
+            "matchingColumns": [],
+            "schema": [
+              {
+                "id": "module",
+                "displayName": "module",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "string"
+              },
+              {
+                "id": "course",
+                "displayName": "course",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "string"
+              }
+            ],
+            "attemptToConvertTypes": false,
+            "convertFieldsToString": false
+          }
+        },
+        "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+        "typeVersion": 2.2,
+        "position": [
+          1600,
+          128
+        ],
+        "id": "67dc6627-4ff2-4434-96f6-b49b8ac34b9f",
+        "name": "get_resources"
+      },
+      {
+        "parameters": {
+          "operation": "push",
+          "list": "={{ $('WhatsApp Trigger').item.json.contacts[0].wa_id }}",
+          "messageData": "={{ JSON.stringify(\n  {\n    'message': $json.final_message ,\n    'sessionId': $('WhatsApp Trigger').item.json.contacts[0].wa_id,\n    'datetime': $('WhatsApp Trigger').item.json.messages[0].timestamp.toDateTime('s').toLocal()\n  }\n) }}"
+        },
+        "type": "n8n-nodes-base.redis",
+        "typeVersion": 1,
+        "position": [
+          -96,
+          -176
+        ],
+        "id": "6529a283-1d95-4a24-8bf3-0cae64b85eec",
+        "name": "buffer",
+        "credentials": {
+          "redis": {
+            "id": "zhcGsNeHRpNaa5xj",
+            "name": "Redis account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "operation": "get",
+          "propertyName": "message",
+          "key": "={{ $('WhatsApp Trigger').item.json.contacts[0].wa_id }}",
+          "options": {}
+        },
+        "type": "n8n-nodes-base.redis",
+        "typeVersion": 1,
+        "position": [
+          112,
+          -176
+        ],
+        "id": "ac2a4462-1f3e-47cd-83d0-db0cce7f3617",
+        "name": "get_buffer_data",
+        "credentials": {
+          "redis": {
+            "id": "zhcGsNeHRpNaa5xj",
+            "name": "Redis account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "rules": {
+            "values": [
+              {
+                "conditions": {
+                  "options": {
+                    "caseSensitive": true,
+                    "leftValue": "",
+                    "typeValidation": "strict",
+                    "version": 2
+                  },
+                  "conditions": [
+                    {
+                      "leftValue": "={{ $('WhatsApp Trigger').item.json.messages[0].type }}",
+                      "rightValue": "audio",
+                      "operator": {
+                        "type": "string",
+                        "operation": "equals"
+                      },
+                      "id": "b8928e7b-14c0-418a-90a1-ec0f14e3c437"
+                    }
+                  ],
+                  "combinator": "and"
+                },
+                "renameOutput": true,
+                "outputKey": "audio"
+              },
+              {
+                "conditions": {
+                  "options": {
+                    "caseSensitive": true,
+                    "leftValue": "",
+                    "typeValidation": "strict",
+                    "version": 2
+                  },
+                  "conditions": [
+                    {
+                      "id": "dd24d19c-c843-4885-98de-56d6971b2169",
+                      "leftValue": "={{ $('WhatsApp Trigger').item.json.messages[0].type }}",
+                      "rightValue": "text",
+                      "operator": {
+                        "type": "string",
+                        "operation": "equals",
+                        "name": "filter.operator.equals"
+                      }
+                    }
+                  ],
+                  "combinator": "and"
+                },
+                "renameOutput": true,
+                "outputKey": "text"
+              },
+              {
+                "conditions": {
+                  "options": {
+                    "caseSensitive": true,
+                    "leftValue": "",
+                    "typeValidation": "strict",
+                    "version": 2
+                  },
+                  "conditions": [
+                    {
+                      "id": "f600ce41-f015-484d-b1ed-f957132b2c7c",
+                      "leftValue": "={{ $json.messages[0].type }}",
+                      "rightValue": "image",
+                      "operator": {
+                        "type": "string",
+                        "operation": "equals",
+                        "name": "filter.operator.equals"
+                      }
+                    }
+                  ],
+                  "combinator": "and"
+                },
+                "renameOutput": true,
+                "outputKey": "image"
+              }
+            ]
+          },
+          "options": {}
+        },
+        "type": "n8n-nodes-base.switch",
+        "typeVersion": 3.2,
+        "position": [
+          -1728,
+          -192
+        ],
+        "id": "f8c6778a-07c8-47e6-b750-22c137ba6396",
+        "name": "Switch1"
+      },
+      {
+        "parameters": {
+          "resource": "audio",
+          "operation": "transcribe",
+          "options": {}
+        },
+        "type": "@n8n/n8n-nodes-langchain.openAi",
+        "typeVersion": 1.8,
+        "position": [
+          -1024,
+          -336
+        ],
+        "id": "294a402b-96cf-42b5-ad29-cdb32330a9ac",
+        "name": "Transcribe a recording",
+        "credentials": {
+          "openAiApi": {
+            "id": "{{openAiApiId}}",
+            "name": "{{openAiApiName}}"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "resource": "media",
+          "operation": "mediaUrlGet",
+          "mediaGetId": "={{ $('WhatsApp Trigger').item.json.messages[0].audio.id }}"
+        },
+        "type": "n8n-nodes-base.whatsApp",
+        "typeVersion": 1,
+        "position": [
+          -1440,
+          -336
+        ],
+        "id": "32039992-8ef2-41d3-b7f3-e118e4300979",
+        "name": "Download media",
+        "webhookId": "2b1cffd0-1e98-4fdd-b213-c42bc244720a",
+        "credentials": {
+          "whatsAppApi": {
+            "id": "{{whatsAppApiId}}",
+            "name": "{{whatsAppApiName}}"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "url": "={{ $json.url }}",
+          "authentication": "genericCredentialType",
+          "genericAuthType": "httpHeaderAuth",
+          "options": {}
+        },
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          -1232,
+          -336
+        ],
+        "id": "e1612c99-8efa-479d-9146-6485a762aec4",
+        "name": "HTTP Request",
+        "credentials": {
+          "httpHeaderAuth": {
+            "id": "{{httpBearerAuthId}}",
+            "name": "{{httpBearerAuthName}}"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "resource": "media",
+          "operation": "mediaUrlGet",
+          "mediaGetId": "={{ $json.messages[0].image.id }}"
+        },
+        "type": "n8n-nodes-base.whatsApp",
+        "typeVersion": 1,
+        "position": [
+          -1440,
+          0
+        ],
+        "id": "47762346-143c-4214-a36a-d67de4023950",
+        "name": "Download media1",
+        "webhookId": "2b1cffd0-1e98-4fdd-b213-c42bc244720a",
+        "credentials": {
+          "whatsAppApi": {
+            "id": "{{whatsAppApiId}}",
+            "name": "{{whatsAppApiName}}"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "url": "={{ $json.url }}",
+          "authentication": "genericCredentialType",
+          "genericAuthType": "httpHeaderAuth",
+          "options": {}
+        },
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          -1232,
+          0
+        ],
+        "id": "154f917b-dc7b-4f6a-b47a-cf3be94ae4ae",
+        "name": "HTTP Request1",
+        "credentials": {
+          "httpHeaderAuth": {
+            "id": "{{httpBearerAuthId}}",
+            "name": "{{httpBearerAuthName}}"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "resource": "image",
+          "operation": "analyze",
+          "modelId": {
+            "__rl": true,
+            "value": "gpt-4o-mini",
+            "mode": "list",
+            "cachedResultName": "GPT-4O-MINI"
+          },
+          "text": "¿Qué hay en esta imagen?",
+          "inputType": "base64",
+          "options": {}
+        },
+        "type": "@n8n/n8n-nodes-langchain.openAi",
+        "typeVersion": 1.8,
+        "position": [
+          -1024,
+          0
+        ],
+        "id": "6c741b21-ddb6-470f-8d9e-db6a58b69dac",
+        "name": "Analyze image",
+        "credentials": {
+          "openAiApi": {
+            "id": "{{openAiApiId}}",
+            "name": "{{openAiApiName}}"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "assignments": {
+            "assignments": [
+              {
+                "id": "5a5b4594-5797-4c46-aa14-c9aacbe25353",
+                "name": "final_message",
+                "value": "={{ $json.messages[0].text.body }}",
+                "type": "string"
+              }
+            ]
+          },
+          "options": {}
+        },
+        "type": "n8n-nodes-base.set",
+        "typeVersion": 3.4,
+        "position": [
+          -832,
+          -176
+        ],
+        "id": "20a8f4fc-bdf3-454c-85cf-d811e48adb65",
+        "name": "final_message_text"
+      },
+      {
+        "parameters": {
+          "assignments": {
+            "assignments": [
+              {
+                "id": "c9f93339-98af-4976-8633-88243f73d2c3",
+                "name": "final_message",
+                "value": "={{ $json.text }}",
+                "type": "string"
+              }
+            ]
+          },
+          "options": {}
+        },
+        "type": "n8n-nodes-base.set",
+        "typeVersion": 3.4,
+        "position": [
+          -832,
+          -336
+        ],
+        "id": "32ca140d-c7ad-41e4-90e0-891e5a6db37c",
+        "name": "final_message_voice"
+      },
+      {
+        "parameters": {
+          "assignments": {
+            "assignments": [
+              {
+                "id": "88589b39-9034-4d87-81c3-ab0f4a1b4708",
+                "name": "final_message",
+                "value": "=# Descripción imagen: {{ $json.content }}\n\n# {{ $('WhatsApp Trigger').item.json.messages[0].image.caption || \"Describe la imagen\" }}",
+                "type": "string"
+              }
+            ]
+          },
+          "options": {}
+        },
+        "type": "n8n-nodes-base.set",
+        "typeVersion": 3.4,
+        "position": [
+          -832,
+          0
+        ],
+        "id": "b3d3475c-ee2d-40ab-af28-28257f2182ed",
+        "name": "final_message_image"
+      },
+      {
+        "parameters": {
+          "rules": {
+            "values": [
+              {
+                "conditions": {
+                  "options": {
+                    "caseSensitive": true,
+                    "leftValue": "",
+                    "typeValidation": "strict",
+                    "version": 2
+                  },
+                  "conditions": [
+                    {
+                      "leftValue": "={{ JSON.parse($json.message.last()).datetime }}",
+                      "rightValue": "={{ $now.minus(7,'seconds').toLocal() }}",
+                      "operator": {
+                        "type": "dateTime",
+                        "operation": "before"
+                      },
+                      "id": "00761094-ce40-4148-808c-c156fac92f56"
+                    }
+                  ],
+                  "combinator": "and"
+                },
+                "renameOutput": true,
+                "outputKey": "continuar"
+              }
+            ]
+          },
+          "options": {
+            "fallbackOutput": "extra",
+            "renameFallbackOutput": "esperar"
+          }
+        },
+        "type": "n8n-nodes-base.switch",
+        "typeVersion": 3.2,
+        "position": [
+          320,
+          -176
+        ],
+        "id": "e4bd24a3-1e29-4bf1-b1a1-d5ab12a31a19",
+        "name": "Switch"
+      },
+      {
+        "parameters": {
+          "amount": 7
+        },
+        "type": "n8n-nodes-base.wait",
+        "typeVersion": 1.1,
+        "position": [
+          496,
+          -48
+        ],
+        "id": "c15b7807-e164-405e-b893-b846bcd19f80",
+        "name": "Wait",
+        "webhookId": "59c7a0ed-f115-441d-8be8-f3018cb523f0"
+      },
+      {
+        "parameters": {
+          "operation": "delete",
+          "key": "={{ $('WhatsApp Trigger').item.json.contacts[0].wa_id }}"
+        },
+        "type": "n8n-nodes-base.redis",
+        "typeVersion": 1,
+        "position": [
+          592,
+          -192
+        ],
+        "id": "428acd4d-90b1-4d6b-9e5d-7265839b5133",
+        "name": "delete_buffer",
+        "credentials": {
+          "redis": {
+            "id": "zhcGsNeHRpNaa5xj",
+            "name": "Redis account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "assignments": {
+            "assignments": [
+              {
+                "id": "f708a60d-3272-4b1f-844d-6b1c3aa356db",
+                "name": "concat_message",
+                "value": "{{ $json.message.map(m=> JSON.parse(m).message).join('\\n')}}",
+                "type": "string"
+              }
+            ]
+          },
+          "options": {}
+        },
+        "type": "n8n-nodes-base.set",
+        "typeVersion": 3.4,
+        "position": [
+          784,
+          -192
+        ],
+        "id": "659a2a39-a322-4d4f-9b31-bd229b55ceaf",
+        "name": "Edit Fields"
+      },
+      {
+        "parameters": {
+          "operation": "push",
+          "list": "={{ $('WhatsApp Trigger').item.json.contacts[0].wa_id }}-session",
+          "messageData": "={{ $now.toLocal().toString() }}"
+        },
+        "type": "n8n-nodes-base.redis",
+        "typeVersion": 1,
+        "position": [
+          1760,
+          -192
+        ],
+        "id": "a5a5d3e4-8496-47cf-9e30-bdd355803730",
+        "name": "adding_session",
+        "credentials": {
+          "redis": {
+            "id": "zhcGsNeHRpNaa5xj",
+            "name": "Redis account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "operation": "pop",
+          "list": "={{ $('WhatsApp Trigger').item.json.contacts[0].wa_id }}-session",
+          "options": {}
+        },
+        "type": "n8n-nodes-base.redis",
+        "typeVersion": 1,
+        "position": [
+          -2944,
+          -208
+        ],
+        "id": "ac0bb3e5-9e96-46d9-84cb-da620b4f4153",
+        "name": "get_session",
+        "alwaysOutputData": false,
+        "credentials": {
+          "redis": {
+            "id": "zhcGsNeHRpNaa5xj",
+            "name": "Redis account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict",
+              "version": 2
+            },
+            "conditions": [
+              {
+                "id": "66fef2e2-99b4-43b9-b117-22a9a92a2d7c",
+                "leftValue": "={{ $('get_session').item.json.propertyName }}",
+                "rightValue": "",
+                "operator": {
+                  "type": "string",
+                  "operation": "notEmpty",
+                  "singleValue": true
+                }
+              }
+            ],
+            "combinator": "and"
+          },
+          "options": {}
+        },
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2,
+        "position": [
+          -2720,
+          -208
+        ],
+        "id": "0a60058a-3eef-4165-935b-52772e0fd3be",
+        "name": "If"
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict",
+              "version": 2
+            },
+            "conditions": [
+              {
+                "id": "aa491fe1-815e-4772-a918-f0b4fb7ead2b",
+                "leftValue": "={{ $('get_session').item.json.propertyName.toDateTime() }}",
+                "rightValue": "={{ $now.minus(10, 'minutes').toLocal() }}",
+                "operator": {
+                  "type": "dateTime",
+                  "operation": "after"
+                }
+              }
+            ],
+            "combinator": "and"
+          },
+          "options": {}
+        },
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2,
+        "position": [
+          -2448,
+          -224
+        ],
+        "id": "a4355ff6-5b75-4706-89da-78023ebbd530",
+        "name": "If1"
+      },
+      {
+        "parameters": {
+          "mode": "delete",
+          "deleteMode": "all"
+        },
+        "type": "@n8n/n8n-nodes-langchain.memoryManager",
+        "typeVersion": 1.1,
+        "position": [
+          -2144,
+          0
+        ],
+        "id": "4a5acdbe-9b91-4aa6-a4eb-cb5352b48b4a",
+        "name": "Chat Memory Manager"
+      },
+      {
+        "parameters": {
+          "sessionIdType": "customKey",
+          "sessionKey": "={{ $('WhatsApp Trigger').item.json.contacts[0].wa_id }}"
+        },
+        "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+        "typeVersion": 1.3,
+        "position": [
+          -2144,
+          192
+        ],
+        "id": "eda865f5-8c7b-41ff-a7d7-7e2ab0b927a1",
+        "name": "delete"
+      }
+    ],
+    "connections": {
+      "WhatsApp Trigger": {
+        "main": [
+          [
+            {
+              "node": "get_session",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Simple Memory": {
+        "ai_memory": [
+          [
+            {
+              "node": "AI Agent",
+              "type": "ai_memory",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "OpenAI Chat Model": {
+        "ai_languageModel": [
+          [
+            {
+              "node": "AI Agent",
+              "type": "ai_languageModel",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "AI Agent": {
+        "main": [
+          [
+            {
+              "node": "Send message",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "validation_course": {
+        "ai_tool": [
+          [
+            {
+              "node": "AI Agent",
+              "type": "ai_tool",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "validation_module_progress": {
+        "ai_tool": [
+          [
+            {
+              "node": "AI Agent",
+              "type": "ai_tool",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "finish_module": {
+        "ai_tool": [
+          [
+            {
+              "node": "AI Agent",
+              "type": "ai_tool",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "get_resources": {
+        "ai_tool": [
+          [
+            {
+              "node": "AI Agent",
+              "type": "ai_tool",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "buffer": {
+        "main": [
+          [
+            {
+              "node": "get_buffer_data",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "get_buffer_data": {
+        "main": [
+          [
+            {
+              "node": "Switch",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Switch1": {
+        "main": [
+          [
+            {
+              "node": "Download media",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "final_message_text",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Download media1",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Download media": {
+        "main": [
+          [
+            {
+              "node": "HTTP Request",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "HTTP Request": {
+        "main": [
+          [
+            {
+              "node": "Transcribe a recording",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Download media1": {
+        "main": [
+          [
+            {
+              "node": "HTTP Request1",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "HTTP Request1": {
+        "main": [
+          [
+            {
+              "node": "Analyze image",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Transcribe a recording": {
+        "main": [
+          [
+            {
+              "node": "final_message_voice",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Analyze image": {
+        "main": [
+          [
+            {
+              "node": "final_message_image",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "final_message_text": {
+        "main": [
+          [
+            {
+              "node": "buffer",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "final_message_image": {
+        "main": [
+          [
+            {
+              "node": "buffer",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "final_message_voice": {
+        "main": [
+          [
+            {
+              "node": "buffer",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Switch": {
+        "main": [
+          [
+            {
+              "node": "delete_buffer",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Wait",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Wait": {
+        "main": [
+          [
+            {
+              "node": "get_buffer_data",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "delete_buffer": {
+        "main": [
+          [
+            {
+              "node": "Edit Fields",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Edit Fields": {
+        "main": [
+          [
+            {
+              "node": "AI Agent",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Send message": {
+        "main": [
+          [
+            {
+              "node": "adding_session",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "get_session": {
+        "main": [
+          [
+            {
+              "node": "If",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "If": {
+        "main": [
+          [
+            {
+              "node": "If1",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Chat Memory Manager",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "If1": {
+        "main": [
+          [
+            {
+              "node": "Switch1",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Chat Memory Manager",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "delete": {
+        "ai_memory": [
+          [
+            {
+              "node": "Chat Memory Manager",
+              "type": "ai_memory",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Chat Memory Manager": {
+        "main": [
+          [
+            {
+              "node": "Switch1",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "settings": {
+      "executionOrder": "v1"
+    }
+  }
