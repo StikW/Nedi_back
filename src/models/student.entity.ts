@@ -16,9 +16,12 @@ export interface Student {
   enrolledAt: string;
   /** When the student record was last updated */
   updatedAt: string;
+  /** Número de veces que el estudiante ha ingresado al sistema */
+  loginCount?: number;
 }
 
+const _tablePrefix = process.env.DYNAMODB_TABLE_PREFIX || '';
 /**
  * DynamoDB table name for students
  */
-export const STUDENTS_TABLE = 'Students';
+export const STUDENTS_TABLE = _tablePrefix + 'Students';

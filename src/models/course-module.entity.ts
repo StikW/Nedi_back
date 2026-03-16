@@ -45,12 +45,13 @@ export interface ModuleResource {
   size?: number;
 }
 
+const _tablePrefix = process.env.DYNAMODB_TABLE_PREFIX || '';
 /**
  * DynamoDB table name for course modules
  */
-export const COURSE_MODULES_TABLE = 'CourseModules';
+export const COURSE_MODULES_TABLE = _tablePrefix + 'CourseModules';
 
 /**
  * DynamoDB table name for course module progress
  */
-export const MODULE_PROGRESS_TABLE = 'ModuleProgress';
+export const MODULE_PROGRESS_TABLE = _tablePrefix + 'ModuleProgress';

@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsArray, ValidateNested } from 'class-validator';
+import { IsString, IsNumber, IsArray, ValidateNested, IsOptional } from 'class-validator';
 import { Type } from 'class-transformer';
 
 /**
@@ -36,6 +36,16 @@ export class StudentProgressDto {
   /** Last module completion date (if any) */
   @IsString()
   lastCompletedAt?: string;
+
+  /** Veces que el estudiante ha ingresado al sistema */
+  @IsOptional()
+  @IsNumber()
+  loginCount?: number;
+
+  /** Fecha de la última vez que ingresó (updatedAt del estudiante) */
+  @IsOptional()
+  @IsString()
+  lastAccessAt?: string;
 }
 
 /**

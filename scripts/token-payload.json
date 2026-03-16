@@ -1,0 +1,5 @@
+{
+  "sub": "id-del-usuario-en-dynamodb",
+  "email": "instructor@ejemplo.com",
+  "role": "instructor"
+}

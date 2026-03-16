@@ -16,7 +16,8 @@ export interface ModuleProgress {
   completedAt: string;
 }
 
+const _tablePrefix = process.env.DYNAMODB_TABLE_PREFIX || '';
 /**
  * DynamoDB table name for module progress
  */
-export const MODULE_PROGRESS_TABLE = 'ModuleProgress';
+export const MODULE_PROGRESS_TABLE = _tablePrefix + 'ModuleProgress';

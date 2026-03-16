@@ -37,7 +37,8 @@ export interface User {
   apiKey?: string;
 }
 
+const _tablePrefix = process.env.DYNAMODB_TABLE_PREFIX || '';
 /**
  * DynamoDB table name for users
  */
-export const USERS_TABLE = 'Users'; 
+export const USERS_TABLE = _tablePrefix + 'Users'; 

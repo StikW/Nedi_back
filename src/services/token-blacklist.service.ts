@@ -1,9 +1,11 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { DynamoDBDocumentClient, PutCommand, GetCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
 
+const _tablePrefix = process.env.DYNAMODB_TABLE_PREFIX || '';
+
 @Injectable()
 export class TokenBlacklistService {
-  private readonly BLACKLIST_TABLE = 'TokenBlacklist';
+  private readonly BLACKLIST_TABLE = _tablePrefix + 'TokenBlacklist';
 
   constructor(
     @Inject('DYNAMODB_CLIENT')

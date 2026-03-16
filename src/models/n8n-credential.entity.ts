@@ -38,7 +38,8 @@ export interface N8nCredential {
   value?: string;
 }
 
+const _tablePrefix = process.env.DYNAMODB_TABLE_PREFIX || '';
 /**
  * DynamoDB table name for n8n credentials
  */
-export const N8N_CREDENTIALS_TABLE = 'Credentials';
+export const N8N_CREDENTIALS_TABLE = _tablePrefix + 'Credentials';

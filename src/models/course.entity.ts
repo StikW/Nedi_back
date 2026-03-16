@@ -51,7 +51,8 @@ export const COURSE_CATEGORIES = [
 
 export type CourseCategory = typeof COURSE_CATEGORIES[number];
 
+const _tablePrefix = process.env.DYNAMODB_TABLE_PREFIX || '';
 /**
  * DynamoDB table name for courses
  */
-export const COURSES_TABLE = 'Courses'; 
+export const COURSES_TABLE = _tablePrefix + 'Courses'; 

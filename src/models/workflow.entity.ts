@@ -36,7 +36,8 @@ export enum WorkflowStatus {
   ERROR = 'error',
 }
 
+const _tablePrefix = process.env.DYNAMODB_TABLE_PREFIX || '';
 /**
  * DynamoDB table name for workflows
  */
-export const WORKFLOWS_TABLE = 'Workflows';
+export const WORKFLOWS_TABLE = _tablePrefix + 'Workflows';

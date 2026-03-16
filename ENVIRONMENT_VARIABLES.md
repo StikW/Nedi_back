@@ -19,10 +19,14 @@ JWT_SECRET=your_jwt_secret_key
 JWT_EXPIRES_IN=24h
 ```
 
-## Database Configuration (if using DynamoDB)
+## Database Configuration (DynamoDB)
 ```bash
+# Opcional. Prefijo para nombres de tablas (ej. dev_ → dev_Users, dev_Courses).
+# Déjalo vacío o no lo definas para usar tablas sin prefijo (Users, Courses, ...).
 DYNAMODB_TABLE_PREFIX=dev_
 ```
+
+Para crear las tablas en una cuenta AWS nueva, usa el script `scripts/create-dynamodb-tables.js` y configura las mismas variables `AWS_*` y opcionalmente `DYNAMODB_TABLE_PREFIX`. Ver **DYNAMODB_TABLES.md** para el listado de tablas y esquemas.
 
 ## Configuración del Bucket S3
 

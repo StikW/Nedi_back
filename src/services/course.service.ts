@@ -8,7 +8,10 @@ import { StudentService } from './student.service';
 import { CourseModuleService } from './course-module.service';
 import { CourseCompletionStatsDto, StudentProgressDto, StudentProgressPaginatedDto } from '../models/course-stats.dto';
 import { InstructorStatsDto } from '../models/instructor-stats.dto';
-import { ModuleProgress } from '../models/module-progress.entity';
+import { ModuleProgress, MODULE_PROGRESS_TABLE } from '../models/module-progress.entity';
+import { USERS_TABLE } from '../models/user.entity';
+import { STUDENTS_TABLE } from '../models/student.entity';
+import { COURSE_MODULES_TABLE } from '../models/course-module.entity';
 import { PaginationDto, PaginatedResponseDto } from '../models/pagination.dto';
 
 @Injectable()
@@ -207,7 +210,7 @@ export class CourseService {
    */
   private async getModuleProgressesByCourse(courseId: string): Promise<ModuleProgress[]> {
     const result = await this.dynamoClient.send(new ScanCommand({
-      TableName: 'ModuleProgress',
+      TableName: MODULE_PROGRESS_TABLE,
       FilterExpression: 'courseId = :courseId',
       ExpressionAttributeValues: {
         ':courseId': courseId
@@ -329,7 +332,7 @@ export class CourseService {
   private async getInstructorInfo(instructorId: string): Promise<User | null> {
     try {
       const result = await this.dynamoClient.send(new GetCommand({
-        TableName: 'Users',
+        TableName: USERS_TABLE,
         Key: { id: instructorId }
       }));
 
@@ -423,7 +426,9 @@ export class CourseService {
         completedModules,
         totalModules,
         enrolledAt: student.enrolledAt,
-        lastCompletedAt
+        lastCompletedAt,
+        loginCount: student.loginCount ?? 0,
+        lastAccessAt: student.updatedAt
       };
     });
 
@@ -453,7 +458,7 @@ export class CourseService {
    */
   private async countStudentsByCourse(courseId: string, instructorId: string): Promise<number> {
     const result = await this.dynamoClient.send(new QueryCommand({
-      TableName: 'Students',
+      TableName: STUDENTS_TABLE,
       IndexName: 'courseId-index',
       KeyConditionExpression: 'courseId = :courseId',
       ExpressionAttributeValues: {
@@ -470,7 +475,7 @@ export class CourseService {
    */
   private async countPublishedModulesByCourse(courseId: string): Promise<number> {
     const result = await this.dynamoClient.send(new QueryCommand({
-      TableName: 'CourseModules',
+      TableName: COURSE_MODULES_TABLE,
       IndexName: 'courseId-order-index',
       KeyConditionExpression: 'courseId = :courseId',
       FilterExpression: '#status = :status',
@@ -492,7 +497,7 @@ export class CourseService {
    */
   private async countModuleProgressesByCourse(courseId: string): Promise<number> {
     const result = await this.dynamoClient.send(new ScanCommand({
-      TableName: 'ModuleProgress',
+      TableName: MODULE_PROGRESS_TABLE,
       FilterExpression: 'courseId = :courseId',
       ExpressionAttributeValues: {
         ':courseId': courseId
