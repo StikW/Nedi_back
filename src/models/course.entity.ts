@@ -18,6 +18,8 @@ export interface Course {
   prerequisites?: string;
   /** Course status */
   status: CourseStatus;
+  /** Curso público (enlace de registro) o privado (solo registro manual por instructor) */
+  visibility?: CourseVisibility;
   /** Course instructor ID */
   instructorId: string;
   /** When the course was created */
@@ -33,6 +35,12 @@ export enum CourseStatus {
   DRAFT = 'draft',
   PUBLISHED = 'published',
   ARCHIVED = 'archived',
+}
+
+/** Visibilidad del curso para registro de estudiantes */
+export enum CourseVisibility {
+  PUBLIC = 'public',
+  PRIVATE = 'private',
 }
 
 /**

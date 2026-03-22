@@ -1,5 +1,5 @@
 import { IsString, IsEnum, IsUrl, MinLength, MaxLength, IsOptional } from 'class-validator';
-import { CourseStatus, CourseCategory, COURSE_CATEGORIES } from './course.entity';
+import { CourseStatus, CourseCategory, COURSE_CATEGORIES, CourseVisibility } from './course.entity';
 
 /**
  * Data transfer object for creating a new course
@@ -40,6 +40,11 @@ export class CreateCourseDto {
   @IsEnum(CourseStatus)
   @IsOptional()
   status?: CourseStatus;
+
+  /** public = enlace de registro; private = solo registro manual */
+  @IsEnum(CourseVisibility)
+  @IsOptional()
+  visibility?: CourseVisibility;
 }
 
 /**
@@ -86,4 +91,8 @@ export class UpdateCourseDto {
   @IsEnum(CourseStatus)
   @IsOptional()
   status?: CourseStatus;
+
+  @IsEnum(CourseVisibility)
+  @IsOptional()
+  visibility?: CourseVisibility;
 } 

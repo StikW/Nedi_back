@@ -1,5 +1,5 @@
 import { Inject, Injectable, forwardRef } from '@nestjs/common';
-import { Course, COURSES_TABLE, CourseStatus } from '../models/course.entity';
+import { Course, COURSES_TABLE, CourseStatus, CourseVisibility } from '../models/course.entity';
 import { CreateCourseDto, UpdateCourseDto } from '../models/course.dto';
 import { User } from '../models/user.entity';
 import { DynamoDBDocumentClient, GetCommand, PutCommand, QueryCommand, DeleteCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
@@ -33,7 +33,8 @@ export class CourseService {
       instructorId: instructor.id,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      status: createCourseDto.status || CourseStatus.DRAFT
+      status: createCourseDto.status || CourseStatus.DRAFT,
+      visibility: createCourseDto.visibility ?? CourseVisibility.PRIVATE,
     };
 
     await this.dynamoClient.send(new PutCommand({
@@ -131,6 +132,22 @@ export class CourseService {
 
     const course = result.Item as Course | undefined;
     return course?.instructorId === instructorId ? course : null;
+  }
+
+  /**
+   * Curso público y publicado (para registro sin autenticación).
+   * Cursos sin visibility se tratan como privados.
+   */
+  async findPublishedPublicCourse(courseId: string): Promise<Course | null> {
+    const result = await this.dynamoClient.send(new GetCommand({
+      TableName: COURSES_TABLE,
+      Key: { id: courseId },
+    }));
+    const course = result.Item as Course | undefined;
+    if (!course) return null;
+    const isPublic = course.visibility === CourseVisibility.PUBLIC;
+    const isPublished = course.status === CourseStatus.PUBLISHED;
+    return isPublic && isPublished ? course : null;
   }
 
   async delete(id: string, instructorId: string): Promise<{
