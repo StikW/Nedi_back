@@ -22,13 +22,8 @@ interface RequestWithUser extends ExpressRequest {
 export class UploadsController {
   private readonly n8nWebhookUrl: string;
   constructor(private readonly uploadsService: UploadsService, private readonly courseService: CourseService, private readonly configService: ConfigService) {
-    const nodeEnv = this.configService.get<string>('NODE_ENV') || 'development';
-    const productionWebhook = this.configService.get<string>('N8N_WEBHOOK_URL')
-      || 'https://n8n.tututor.co/webhook/vectorizacion';
-    const devWebhook = this.configService.get<string>('N8N_WEBHOOK_URL_DEV')
-      || 'https://dev.n8n.tututor.co/webhook/vector';
-
-    this.n8nWebhookUrl = nodeEnv === 'production' ? productionWebhook : devWebhook;
+    this.n8nWebhookUrl = this.configService.get<string>('N8N_WEBHOOK_URL')
+    || 'https://n8n.tututor.co/webhook/vectorizacion';
   }
 
   /**
