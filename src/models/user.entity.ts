@@ -21,6 +21,12 @@ export interface User {
   name: string;
   /** User's role in the system */
   role: UserRole;
+  /**
+   * User's phone number in E.164 format (e.g. +573001234567).
+   * Solo aplica para instructores: se usa como número del "tutor NEDI" que se
+   * inserta en la plantilla de WhatsApp `nedi_bienvenida_curso`.
+   */
+  phoneNumber?: string;
   /** When the user was created */
   createdAt: string;
   /** When the user was last updated */

@@ -26,6 +26,14 @@ export class UsersService {
   ) {}
 
   /**
+   * Normaliza un n\u00famero a formato E.164 sin el prefijo "+" (consistente con el
+   * resto del sistema y con lo que espera Meta Graph API).
+   */
+  private normalizePhoneNumber(phoneNumber: string): string {
+    return (phoneNumber || '').replace(/[^0-9]/g, '');
+  }
+
+  /**
    * Creates a new user
    * @param registerDto User registration data
    * @returns Created user without password
@@ -46,6 +54,9 @@ export class UsersService {
       password: hashedPassword,
       name: registerDto.name,
       role: registerDto.role || UserRole.STUDENT, // Default role is STUDENT
+      phoneNumber: registerDto.phoneNumber
+        ? this.normalizePhoneNumber(registerDto.phoneNumber)
+        : undefined,
       createdAt: now,
       updatedAt: now,
       // Campos específicos para instructores
@@ -126,6 +137,39 @@ export class UsersService {
   }
 
   /**
+   * Devuelve el perfil del usuario autenticado (sin password).
+   */
+  public async getMyProfile(userId: string): Promise<UserResponseDto> {
+    const user = await this.findById(userId);
+    const { password, ...rest } = user;
+    return rest as UserResponseDto;
+  }
+
+  /**
+   * Permite al usuario autenticado actualizar SU PROPIO perfil.
+   *
+   * Por seguridad, este m\u00e9todo descarta los campos sensibles que solo un
+   * admin puede modificar (role, credenciales de n8n/WhatsApp del instructor, etc.).
+   * Los \u00fanicos campos editables por self-service son:
+   *   - name
+   *   - email
+   *   - phoneNumber  (\u2190 lo que el flujo de bienvenida WhatsApp usa)
+   *
+   * Para cambiar la password se sigue usando POST /auth/change-password.
+   */
+  public async updateMyProfile(
+    userId: string,
+    updateDto: UpdateUserDto,
+  ): Promise<UserResponseDto> {
+    const sanitized: UpdateUserDto = {
+      name: updateDto.name,
+      email: updateDto.email,
+      phoneNumber: updateDto.phoneNumber,
+    };
+    return this.updateUser(userId, sanitized);
+  }
+
+  /**
    * Updates a user's information
    * @param userId User's ID
    * @param updateDto Data to update
@@ -171,6 +215,14 @@ export class UsersService {
       updateExpression.push('#role = :role');
       expressionAttributeNames['#role'] = 'role';
       expressionAttributeValues[':role'] = updateDto.role;
+    }
+
+    if (updateDto.phoneNumber !== undefined) {
+      updateExpression.push('#phoneNumber = :phoneNumber');
+      expressionAttributeNames['#phoneNumber'] = 'phoneNumber';
+      expressionAttributeValues[':phoneNumber'] = updateDto.phoneNumber
+        ? this.normalizePhoneNumber(updateDto.phoneNumber)
+        : null;
     }
 
     if (updateDto.clientIdApp !== undefined) {

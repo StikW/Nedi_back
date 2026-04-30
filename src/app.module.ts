@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import { HealthModule } from './modules/health.module';
 import { DatabaseModule } from './core/database/database.module';
 import { UsersModule } from './modules/users.module';
@@ -13,6 +14,7 @@ import { ModuleProgressModule } from './modules/module-progress.module';
 import { N8nCredentialsModule } from './modules/n8n-credentials.module';
 import { TemplateModule } from './modules/template.module';
 import { PublicConfigModule } from './modules/public-config.module';
+import { RemindersModule } from './modules/reminders.module';
 import envConfig from './core/config/env.config';
 
 @Module({
@@ -24,6 +26,7 @@ import envConfig from './core/config/env.config';
       //ignoreEnvFile: false,
       load: [envConfig],
     }),
+    ScheduleModule.forRoot(),
     DatabaseModule,
     TemplateModule,
     HealthModule,
@@ -36,7 +39,8 @@ import envConfig from './core/config/env.config';
     WorkflowsModule,
     StudentsModule,
     ModuleProgressModule,
-    N8nCredentialsModule
+    N8nCredentialsModule,
+    RemindersModule,
   ],
 })
 export class AppModule {} 

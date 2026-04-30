@@ -1,6 +1,8 @@
-import { Controller, Post, Body, UseGuards, Request } from '@nestjs/common';
+import { Body, Controller, Get, Post, Put, Request, UseGuards } from '@nestjs/common';
 import { AuthService } from '../services/auth.service';
+import { UsersService } from '../services/users.service';
 import { LoginDto, RegisterDto, AuthResponseDto, ChangePasswordDto } from '../models/auth.dto';
+import { UpdateUserDto, UserResponseDto } from '../models/user.dto';
 import { JwtAuthGuard } from '../strategies/jwt-auth.guard';
 import { AdminGuard } from '../strategies/admin.guard';
 import { Request as ExpressRequest } from 'express';
@@ -15,7 +17,10 @@ interface RequestWithUser extends ExpressRequest {
  */
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly usersService: UsersService,
+  ) {}
 
   /**
    * Registers a new user (Admin only)
@@ -66,4 +71,27 @@ export class AuthController {
   ): Promise<{ message: string }> {
     return this.authService.changePassword(req.user.id, changePasswordDto);
   }
-} 
+
+  /**
+   * Obtiene el perfil del usuario autenticado.
+   * \u00datil para refrescar datos como `phoneNumber` que pueden no estar en el token JWT.
+   */
+  @Get('me')
+  @UseGuards(JwtAuthGuard)
+  public async getMyProfile(@Request() req: RequestWithUser): Promise<UserResponseDto> {
+    return this.usersService.getMyProfile(req.user.id);
+  }
+
+  /**
+   * Permite al usuario autenticado actualizar su propio perfil.
+   * Solo deja modificar los campos seguros: name, email y phoneNumber.
+   */
+  @Put('me')
+  @UseGuards(JwtAuthGuard)
+  public async updateMyProfile(
+    @Body() updateDto: UpdateUserDto,
+    @Request() req: RequestWithUser,
+  ): Promise<UserResponseDto> {
+    return this.usersService.updateMyProfile(req.user.id, updateDto);
+  }
+}
