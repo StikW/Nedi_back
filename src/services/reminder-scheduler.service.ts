@@ -18,8 +18,8 @@ import { WhatsAppTemplateType } from './whatsapp.service';
  *
  *   2. PROD MODE (`REMINDER_TEST_MODE=false` o ausente)
  *      - 2 jobs separados:
- *          \u2022 daily  \u2192 `REMINDER_DAILY_CRON_SCHEDULE`  (default `0 8 * * *`)
- *          \u2022 weekly \u2192 `REMINDER_WEEKLY_CRON_SCHEDULE` (default `0 17 * * 5`)
+ *          \u2022 daily  \u2192 `REMINDER_DAILY_CRON_SCHEDULE`  (default `0 8 * * 1-5`, Lun-Vie 8am)
+ *          \u2022 weekly \u2192 `REMINDER_WEEKLY_CRON_SCHEDULE` (default `0 17 * * 5`, Vie 5pm)
  *      - La bienvenida (`welcome`) NO tiene cron: se env\u00eda autom\u00e1ticamente
  *        al crear un estudiante (ver `StudentService.create()` /
  *        `StudentService.importStudentsFromCSV()`). Para reenviar
@@ -131,7 +131,7 @@ export class ReminderSchedulerService implements OnModuleInit {
 
   private scheduleProductionJobs(timezone: string): void {
     const schedules: Record<Exclude<WhatsAppTemplateType, 'welcome'>, string> = {
-      daily: this.configService.get<string>('REMINDER_DAILY_CRON_SCHEDULE') || '0 8 * * *',
+      daily: this.configService.get<string>('REMINDER_DAILY_CRON_SCHEDULE') || '0 8 * * 1-5',
       weekly: this.configService.get<string>('REMINDER_WEEKLY_CRON_SCHEDULE') || '0 17 * * 5',
     };
 
