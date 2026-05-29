@@ -16,7 +16,6 @@ Este documento describe las tablas que usa el backend y cómo crearlas en una cu
 | **CourseModuleProgress** | `courseId` (String), `moduleId` (String) | — |
 | **ModuleProgress** | `id` (String)     | — |
 | **Progress**     | `phoneNumber` (String), `moduleId` (String) | — |
-| **CourseGamification** | `phoneNumber` (String), `courseId` (String) | — |
 | **Students**     | `id` (String)       | `courseId-index` (PK: courseId), `phoneNumber-index` (PK: phoneNumber) |
 | **Workflows**    | `id` (String)       | `ownerId-index` (PK: ownerId) |
 | **Credentials**  | `id` (String)       | `instructorId-index` (PK: instructorId) |
@@ -60,30 +59,23 @@ Este documento describe las tablas que usa el backend y cómo crearlas en una cu
 - **Sort key:** `moduleId` (String)
 - Sin GSI.
 
-### 7. CourseGamification
-- **Nombre:** `CourseGamification`
-- **Partition key:** `phoneNumber` (String) — teléfono normalizado sin `+` ni prefijo `wa`
-- **Sort key:** `courseId` (String)
-- Sin GSI.
-- **Uso:** puntos, nivel, racha y estadísticas de gamificación **por curso** (independiente entre cursos).
-
-### 8. Students
+### 7. Students
 - **Nombre:** `Students`
 - **Partition key:** `id` (String)
 - **GSI 1:** `courseId-index` — Partition key: `courseId` (String). Estudiantes por curso.
 - **GSI 2:** `phoneNumber-index` — Partition key: `phoneNumber` (String). Estudiantes por teléfono.
 
-### 9. Workflows
+### 8. Workflows
 - **Nombre:** `Workflows`
 - **Partition key:** `id` (String)
 - **GSI:** `ownerId-index` — Partition key: `ownerId` (String). Workflows por dueño (instructor).
 
-### 10. Credentials (n8n)
+### 9. Credentials (n8n)
 - **Nombre:** `Credentials`
 - **Partition key:** `id` (String)
 - **GSI:** `instructorId-index` — Partition key: `instructorId` (String). Credenciales por instructor.
 
-### 11. TokenBlacklist
+### 10. TokenBlacklist
 - **Nombre:** `TokenBlacklist`
 - **Partition key:** `token` (String). JWT que se invalidó (logout).
 - Sin GSI.

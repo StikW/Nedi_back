@@ -13,14 +13,11 @@ export class ModuleProgressService {
   /**
    * Marcar un módulo como completado por un estudiante
    */
-  async completeModule(
-    completeModuleDto: CompleteModuleDto,
-  ): Promise<{ progress: ModuleProgress; isNewCompletion: boolean }> {
+  async completeModule(completeModuleDto: CompleteModuleDto): Promise<ModuleProgress> {
     const normalizedPhone = this.normalizePhoneNumber(completeModuleDto.phoneNumber);
     const compositeId = `${normalizedPhone}#${completeModuleDto.moduleId}`;
     const existingProgress = await this.findOne(compositeId);
     const now = new Date().toISOString();
-    const isNewCompletion = !existingProgress;
 
     if (existingProgress) {
       const updatedProgress: ModuleProgress = {
@@ -34,7 +31,7 @@ export class ModuleProgressService {
         Item: updatedProgress
       }));
 
-      return { progress: updatedProgress, isNewCompletion: false };
+      return updatedProgress;
     }
 
     const moduleProgress: ModuleProgress = {
@@ -51,23 +48,13 @@ export class ModuleProgressService {
       Item: moduleProgress
     }));
 
-    return { progress: moduleProgress, isNewCompletion };
+    return moduleProgress;
   }
 
-  /**
-   * Normaliza el número de teléfono removiendo el símbolo + si está presente
-   */
-  normalizePhoneNumber(phoneNumber: string): string {
-    let normalized = phoneNumber.startsWith('+') ? phoneNumber.substring(1) : phoneNumber;
-    if (normalized.startsWith('wa')) {
-      normalized = normalized.substring(2);
-    }
-    return normalized;
+  private normalizePhoneNumber(phoneNumber: string): string {
+    return phoneNumber.startsWith('+') ? phoneNumber.substring(1) : phoneNumber;
   }
 
-  /**
-   * Buscar progreso por ID compuesto
-   */
   private async findOne(id: string): Promise<ModuleProgress | null> {
     const result = await this.dynamoClient.send(new GetCommand({
       TableName: MODULE_PROGRESS_TABLE,
@@ -77,11 +64,7 @@ export class ModuleProgressService {
     return result.Item as ModuleProgress | undefined || null;
   }
 
-  /**
-   * Eliminar todos los progresos asociados a un módulo específico
-   */
   async deleteByModuleId(moduleId: string): Promise<number> {
-    // Buscar todos los registros de progreso para este módulo
     const result = await this.dynamoClient.send(new ScanCommand({
       TableName: MODULE_PROGRESS_TABLE,
       FilterExpression: 'moduleId = :moduleId',
@@ -96,7 +79,6 @@ export class ModuleProgressService {
       return 0;
     }
 
-    // Eliminar en lotes de 25 (límite de DynamoDB BatchWrite)
     const deletePromises = [];
     for (let i = 0; i < progressRecords.length; i += 25) {
       const batch = progressRecords.slice(i, i + 25);
@@ -119,9 +101,6 @@ export class ModuleProgressService {
     return progressRecords.length;
   }
 
-  /**
-   * Find module progress by phone number and course
-   */
   async findByPhoneNumberAndCourse(phoneNumber: string, courseId: string): Promise<ModuleProgress[]> {
     const normalizedPhone = this.normalizePhoneNumber(phoneNumber);
     

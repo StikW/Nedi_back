@@ -112,18 +112,6 @@ const tables = [
     globalSecondaryIndexes: [],
   },
   {
-    name: tableName('CourseGamification'),
-    keySchema: [
-      { AttributeName: 'phoneNumber', KeyType: 'HASH' },
-      { AttributeName: 'courseId', KeyType: 'RANGE' },
-    ],
-    attributeDefinitions: [
-      { AttributeName: 'phoneNumber', AttributeType: 'S' },
-      { AttributeName: 'courseId', AttributeType: 'S' },
-    ],
-    globalSecondaryIndexes: [],
-  },
-  {
     name: tableName('Students'),
     keySchema: [{ AttributeName: 'id', KeyType: 'HASH' }],
     attributeDefinitions: [
