@@ -13,19 +13,16 @@ export class ModuleProgressService {
   /**
    * Marcar un módulo como completado por un estudiante
    */
-  async completeModule(completeModuleDto: CompleteModuleDto): Promise<ModuleProgress> {
-    // Normalizar el número de teléfono removiendo el símbolo + si está presente
+  async completeModule(
+    completeModuleDto: CompleteModuleDto,
+  ): Promise<{ progress: ModuleProgress; isNewCompletion: boolean }> {
     const normalizedPhone = this.normalizePhoneNumber(completeModuleDto.phoneNumber);
-    
-    // Crear ID compuesto: phoneNumber#moduleId
     const compositeId = `${normalizedPhone}#${completeModuleDto.moduleId}`;
-    
-    // Verificar si ya existe un registro de progreso
     const existingProgress = await this.findOne(compositeId);
     const now = new Date().toISOString();
+    const isNewCompletion = !existingProgress;
 
     if (existingProgress) {
-      // Actualizar el progreso existente
       const updatedProgress: ModuleProgress = {
         ...existingProgress,
         timeSpentMinutes: completeModuleDto.timeSpentMinutes || existingProgress.timeSpentMinutes,
@@ -37,32 +34,35 @@ export class ModuleProgressService {
         Item: updatedProgress
       }));
 
-      return updatedProgress;
-    } else {
-      // Crear un nuevo registro de progreso completado
-      const moduleProgress: ModuleProgress = {
-        id: compositeId,
-        phoneNumber: normalizedPhone,
-        moduleId: completeModuleDto.moduleId,
-        courseId: completeModuleDto.courseId,
-        timeSpentMinutes: completeModuleDto.timeSpentMinutes || 0,
-        completedAt: now,
-      };
-
-      await this.dynamoClient.send(new PutCommand({
-        TableName: MODULE_PROGRESS_TABLE,
-        Item: moduleProgress
-      }));
-
-      return moduleProgress;
+      return { progress: updatedProgress, isNewCompletion: false };
     }
+
+    const moduleProgress: ModuleProgress = {
+      id: compositeId,
+      phoneNumber: normalizedPhone,
+      moduleId: completeModuleDto.moduleId,
+      courseId: completeModuleDto.courseId,
+      timeSpentMinutes: completeModuleDto.timeSpentMinutes || 0,
+      completedAt: now,
+    };
+
+    await this.dynamoClient.send(new PutCommand({
+      TableName: MODULE_PROGRESS_TABLE,
+      Item: moduleProgress
+    }));
+
+    return { progress: moduleProgress, isNewCompletion };
   }
 
   /**
    * Normaliza el número de teléfono removiendo el símbolo + si está presente
    */
-  private normalizePhoneNumber(phoneNumber: string): string {
-    return phoneNumber.startsWith('+') ? phoneNumber.substring(1) : phoneNumber;
+  normalizePhoneNumber(phoneNumber: string): string {
+    let normalized = phoneNumber.startsWith('+') ? phoneNumber.substring(1) : phoneNumber;
+    if (normalized.startsWith('wa')) {
+      normalized = normalized.substring(2);
+    }
+    return normalized;
   }
 
   /**

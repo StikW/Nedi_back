@@ -26,7 +26,7 @@ JWT_EXPIRES_IN=24h
 DYNAMODB_TABLE_PREFIX=dev_
 ```
 
-Para crear las tablas en una cuenta AWS nueva, usa el script `scripts/create-dynamodb-tables.js` y configura las mismas variables `AWS_*` y opcionalmente `DYNAMODB_TABLE_PREFIX`. Ver **DYNAMODB_TABLES.md** para el listado de tablas y esquemas.
+Para crear las tablas en una cuenta AWS nueva, usa el script `scripts/create-dynamodb-tables.js` y configura las mismas variables `AWS_*` y opcionalmente `DYNAMODB_TABLE_PREFIX`. Ver **DYNAMODB_TABLES.md** para el listado de tablas y esquemas (incluye **`CourseModuleProgress`** para preguntas por curso/módulo y su relación con **`Progress`** / **`ModuleProgress`**).
 
 ## Configuración del Bucket S3
 

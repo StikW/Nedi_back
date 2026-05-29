@@ -1,0 +1,165 @@
+{
+  "updatedAt": "2026-05-08T23:05:35.953Z",
+  "createdAt": "2026-03-04T19:57:23.674Z",
+  "id": "ViNJz61mmnAXApoG",
+  "name": "WF_ObtenerPreguntas",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "phoneNumber"
+            },
+            {
+              "name": "moduleId"
+            },
+            {
+              "name": "course"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "f212bf00-7543-4f23-a197-f21b9ff732f9",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "tableName": "CourseModuleQuestions",
+        "keysUi": {
+          "keyValues": [
+            {
+              "key": "courseId",
+              "value": "={{ $('When Executed by Another Workflow').item.json.course }}"
+            },
+            {
+              "key": "moduleId",
+              "value": "={{ $('When Executed by Another Workflow').item.json.moduleId }}"
+            }
+          ]
+        },
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.awsDynamoDb",
+      "typeVersion": 1,
+      "position": [
+        208,
+        0
+      ],
+      "id": "1e92e6fb-8657-44bf-b407-6b01c9bafdee",
+      "name": "Get CourseModuleQuestions",
+      "credentials": {
+        "aws": {
+          "id": "neB7cpA9MnnEEp5g",
+          "name": "AWS (IAM) Prod"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "c74cb23d-402b-4999-a364-b1369a6c5559",
+              "name": "questions",
+              "value": "={{ (() => { const bank = $('Get CourseModuleQuestions').first()?.json; const prog = $('Get Progress').first()?.json; const parseStatus = (s) => { if (s == null || s === '') return 0; if (typeof s === 'number' && !Number.isNaN(s)) return s; const n = Number(s); if (!Number.isNaN(n)) return n; const m = String(s).match(/pregunta\\s*(\\d+)/i); if (m) return Math.max(0, parseInt(m[1], 10) - 1); return 0; }; if (!bank?.questions) return null; let arr; try { arr = typeof bank.questions === 'string' ? JSON.parse(bank.questions) : bank.questions; } catch { return null; } if (!Array.isArray(arr) || arr.length === 0) return null; const idx = parseStatus(prog?.questionNumber); const q = arr[idx]; if (q === undefined) return '\u00a1Modulo finalizado!'; return typeof q === 'string' ? q : JSON.stringify(q); })() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        416,
+        0
+      ],
+      "id": "d29fe972-791f-40b9-ba1c-1a3c0aff0861",
+      "name": "Edit Fields"
+    },
+    {
+      "id": "c4a8e12b-9f33-4d1a-b8e6-1a2d3f4c5b67",
+      "name": "Get Progress",
+      "type": "n8n-nodes-base.awsDynamoDb",
+      "typeVersion": 1,
+      "position": [
+        320,
+        0
+      ],
+      "parameters": {
+        "operation": "get",
+        "tableName": "CourseModuleQuestions",
+        "keysUi": {
+          "keyValues": [
+            {
+              "key": "courseId",
+              "value": "={{ $('When Executed by Another Workflow').first().json.course }}"
+            },
+            {
+              "key": "moduleId",
+              "value": "={{ $('When Executed by Another Workflow').first().json.moduleId }}"
+            }
+          ]
+        },
+        "additionalFields": {}
+      },
+      "credentials": {
+        "aws": {
+          "id": "neB7cpA9MnnEEp5g",
+          "name": "AWS (IAM) Prod"
+        }
+      },
+      "alwaysOutputData": true
+    }
+  ],
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Get CourseModuleQuestions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get CourseModuleQuestions": {
+      "main": [
+        [
+          {
+            "node": "Get Progress",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Progress": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "staticData": null
+}

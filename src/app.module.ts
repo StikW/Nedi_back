@@ -11,6 +11,7 @@ import { UploadsModule } from './modules/uploads.module';
 import { WorkflowsModule } from './modules/workflows.module';
 import { StudentsModule } from './modules/students.module';
 import { ModuleProgressModule } from './modules/module-progress.module';
+import { GamificationModule } from './modules/gamification.module';
 import { N8nCredentialsModule } from './modules/n8n-credentials.module';
 import { TemplateModule } from './modules/template.module';
 import { PublicConfigModule } from './modules/public-config.module';
@@ -39,6 +40,7 @@ import envConfig from './core/config/env.config';
     WorkflowsModule,
     StudentsModule,
     ModuleProgressModule,
+    GamificationModule,
     N8nCredentialsModule,
     RemindersModule,
   ],

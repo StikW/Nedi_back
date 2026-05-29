@@ -82,9 +82,45 @@ const tables = [
     ],
   },
   {
+    name: tableName('CourseModuleProgress'),
+    keySchema: [
+      { AttributeName: 'courseId', KeyType: 'HASH' },
+      { AttributeName: 'moduleId', KeyType: 'RANGE' },
+    ],
+    attributeDefinitions: [
+      { AttributeName: 'courseId', AttributeType: 'S' },
+      { AttributeName: 'moduleId', AttributeType: 'S' },
+    ],
+    globalSecondaryIndexes: [],
+  },
+  {
     name: tableName('ModuleProgress'),
     keySchema: [{ AttributeName: 'id', KeyType: 'HASH' }],
     attributeDefinitions: [{ AttributeName: 'id', AttributeType: 'S' }],
+    globalSecondaryIndexes: [],
+  },
+  {
+    name: tableName('Progress'),
+    keySchema: [
+      { AttributeName: 'phoneNumber', KeyType: 'HASH' },
+      { AttributeName: 'moduleId', KeyType: 'RANGE' },
+    ],
+    attributeDefinitions: [
+      { AttributeName: 'phoneNumber', AttributeType: 'S' },
+      { AttributeName: 'moduleId', AttributeType: 'S' },
+    ],
+    globalSecondaryIndexes: [],
+  },
+  {
+    name: tableName('CourseGamification'),
+    keySchema: [
+      { AttributeName: 'phoneNumber', KeyType: 'HASH' },
+      { AttributeName: 'courseId', KeyType: 'RANGE' },
+    ],
+    attributeDefinitions: [
+      { AttributeName: 'phoneNumber', AttributeType: 'S' },
+      { AttributeName: 'courseId', AttributeType: 'S' },
+    ],
     globalSecondaryIndexes: [],
   },
   {
