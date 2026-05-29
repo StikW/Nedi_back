@@ -1,18 +1,21 @@
-import { Inject, Injectable, HttpException, HttpStatus, forwardRef } from '@nestjs/common';
+import { Inject, Injectable, Logger, HttpException, HttpStatus, forwardRef } from '@nestjs/common';
 import { Student, STUDENTS_TABLE } from '../models/student.entity';
 import { CreateStudentDto, UpdateStudentDto, ImportStudentDto, ImportStudentsResponseDto } from '../models/student.dto';
-import { DynamoDBDocumentClient, GetCommand, PutCommand, QueryCommand, DeleteCommand, BatchWriteCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, GetCommand, PutCommand, QueryCommand, DeleteCommand, BatchWriteCommand, ScanCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { PaginationDto, PaginatedResponseDto } from '../models/pagination.dto';
 import { StudentStatsDto, StudentCourseProgressDto } from '../models/student-stats.dto';
 import { v4 as uuidv4 } from 'uuid';
 import { CourseService } from './course.service';
 import { CourseModuleService } from './course-module.service';
 import { ModuleProgressService } from './module-progress.service';
+import { ReminderService } from './reminder.service';
 import * as csv from 'csv-parser';
 import { Readable } from 'stream';
 
 @Injectable()
 export class StudentService {
+  private readonly logger = new Logger(StudentService.name);
+
   constructor(
     @Inject('DYNAMODB_CLIENT')
     private readonly dynamoClient: DynamoDBDocumentClient,
@@ -22,7 +25,30 @@ export class StudentService {
     private readonly courseModuleService: CourseModuleService,
     @Inject(forwardRef(() => ModuleProgressService))
     private readonly moduleProgressService: ModuleProgressService,
+    @Inject(forwardRef(() => ReminderService))
+    private readonly reminderService: ReminderService,
   ) {}
+
+  /**
+   * Dispara la plantilla `nedi_bienvenida_curso` para un estudiante reci\u00e9n
+   * creado. Es fire-and-forget: si falla el WhatsApp, NO se rompe la creaci\u00f3n
+   * del estudiante. El error queda en los logs.
+   */
+  private async dispatchWelcome(student: Student): Promise<void> {
+    try {
+      const result = await this.reminderService.sendWelcomeToStudent(student);
+      if (!result.sent) {
+        this.logger.warn(
+          `Bienvenida no enviada al estudiante ${student.id} (${student.phoneNumber}): ` +
+            `${result.skippedReason || result.error || 'sin motivo'}`,
+        );
+      }
+    } catch (err: any) {
+      this.logger.error(
+        `Error inesperado disparando bienvenida al estudiante ${student.id}: ${err?.message || err}`,
+      );
+    }
+  }
 
   /**
    * Normaliza el número de teléfono removiendo el símbolo + si está presente
@@ -68,6 +94,11 @@ export class StudentService {
       TableName: STUDENTS_TABLE,
       Item: student
     }));
+
+    // Dispara la bienvenida por WhatsApp en background. No bloqueamos la
+    // respuesta HTTP: el estudiante ya quedo creado en DynamoDB; si Meta
+    // falla, queda en los logs para reenv\u00edo manual via /reminders/run/welcome.
+    this.dispatchWelcome(student);
 
     return student;
   }
@@ -292,6 +323,68 @@ export class StudentService {
 
     const students = result.Items as Student[] || [];
     return students.length > 0 ? students[0] : null;
+  }
+
+  /**
+   * Escanear todos los estudiantes de todos los cursos.
+   * Usado por el cron de recordatorios para evaluar inactividad.
+   */
+  async findAllStudents(): Promise<Student[]> {
+    const students: Student[] = [];
+    let exclusiveStartKey: any = undefined;
+
+    do {
+      const result = await this.dynamoClient.send(new ScanCommand({
+        TableName: STUDENTS_TABLE,
+        ExclusiveStartKey: exclusiveStartKey,
+      }));
+
+      if (result.Items) {
+        students.push(...(result.Items as Student[]));
+      }
+      exclusiveStartKey = result.LastEvaluatedKey;
+    } while (exclusiveStartKey);
+
+    return students;
+  }
+
+  /**
+   * Marca la fecha del \u00faltimo env\u00edo de un tipo espec\u00edfico de recordatorio.
+   * Soporta:
+   *   - 'welcome'  \u2192 lastWelcomeSentAt
+   *   - 'daily'    \u2192 lastDailyReminderSentAt (y lastReminderSentAt por compat)
+   *   - 'weekly'   \u2192 lastWeeklyReflectionSentAt
+   */
+  async markReminderSent(
+    id: string,
+    type: 'welcome' | 'daily' | 'weekly' = 'daily',
+    sentAt: string = new Date().toISOString(),
+  ): Promise<void> {
+    let updateExpression: string;
+    const values: Record<string, string> = { ':sentAt': sentAt };
+
+    switch (type) {
+      case 'welcome':
+        updateExpression = 'SET lastWelcomeSentAt = :sentAt, updatedAt = :sentAt';
+        break;
+      case 'weekly':
+        updateExpression = 'SET lastWeeklyReflectionSentAt = :sentAt, updatedAt = :sentAt';
+        break;
+      case 'daily':
+      default:
+        updateExpression =
+          'SET lastDailyReminderSentAt = :sentAt, lastReminderSentAt = :sentAt, updatedAt = :sentAt';
+        break;
+    }
+
+    await this.dynamoClient.send(
+      new UpdateCommand({
+        TableName: STUDENTS_TABLE,
+        Key: { id },
+        UpdateExpression: updateExpression,
+        ExpressionAttributeValues: values,
+      }),
+    );
   }
 
   /**
@@ -526,6 +619,12 @@ export class StudentService {
           }
         }));
         successCount = putRequests.length;
+
+        // Dispara la bienvenida en paralelo (best-effort). No detenemos la
+        // importaci\u00f3n si alguna falla; los warnings quedan en logs.
+        await Promise.allSettled(
+          createdStudents.map((student) => this.dispatchWelcome(student)),
+        );
       } catch (error) {
         // Si falla el BatchWrite, marcar todos como fallidos
         failedCount += putRequests.length;

@@ -2,6 +2,12 @@
 
 Este documento describe los endpoints disponibles para manejar el progreso de módulos de los estudiantes.
 
+## Otras tablas DynamoDB relacionadas
+
+- **`ModuleProgress`**: lo que usa este API Nest (completar módulo; clave `id` compuesta). Detalle en `DYNAMODB_TABLES.md`.
+- **`CourseModuleProgress`**: banco de preguntas **una vez por curso y módulo** (PK `courseId`, SK `moduleId`). No forma parte de los endpoints de este documento; ver `DYNAMODB_TABLES.md`.
+- **`Progress`**: estado por estudiante y módulo (p. ej. WhatsApp/n8n). Ver `DYNAMODB_TABLES.md`.
+
 ## Endpoint Principal: Completar Módulo
 
 ### POST `/module-progress/complete-module`

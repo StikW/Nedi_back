@@ -1,4 +1,4 @@
-import { IsEmail, IsNotEmpty, IsString, MinLength, IsEnum, IsOptional, ValidateIf } from 'class-validator';
+import { IsEmail, IsNotEmpty, IsString, MinLength, IsEnum, IsOptional, ValidateIf, Matches } from 'class-validator';
 import { UserRole } from './user.entity';
 
 /**
@@ -21,6 +21,17 @@ export class RegisterDto {
   @IsEnum(UserRole)
   @IsOptional()
   public role?: UserRole;
+
+  /**
+   * Tel\u00e9fono del instructor en formato E.164 (con o sin "+").
+   * Se usa como n\u00famero del tutor en la plantilla de bienvenida de WhatsApp.
+   */
+  @IsString()
+  @IsOptional()
+  @Matches(/^\+?[1-9]\d{1,14}$/, {
+    message: 'phoneNumber debe estar en formato E.164 (ej: +573001234567)',
+  })
+  public phoneNumber?: string;
 
   // Campos específicos para instructores (WhatsApp credentials)
   @ValidateIf(o => o.role === UserRole.INSTRUCTOR)
