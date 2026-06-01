@@ -13,14 +13,11 @@ export class ModuleProgressService {
   /**
    * Marcar un módulo como completado por un estudiante
    */
-  async completeModule(
-    completeModuleDto: CompleteModuleDto,
-  ): Promise<{ progress: ModuleProgress; isNewCompletion: boolean }> {
+  async completeModule(completeModuleDto: CompleteModuleDto): Promise<ModuleProgress> {
     const normalizedPhone = this.normalizePhoneNumber(completeModuleDto.phoneNumber);
     const compositeId = `${normalizedPhone}#${completeModuleDto.moduleId}`;
     const existingProgress = await this.findOne(compositeId);
     const now = new Date().toISOString();
-    const isNewCompletion = !existingProgress;
 
     if (existingProgress) {
       const updatedProgress: ModuleProgress = {
@@ -31,10 +28,10 @@ export class ModuleProgressService {
 
       await this.dynamoClient.send(new PutCommand({
         TableName: MODULE_PROGRESS_TABLE,
-        Item: updatedProgress
+        Item: updatedProgress,
       }));
 
-      return { progress: updatedProgress, isNewCompletion: false };
+      return updatedProgress;
     }
 
     const moduleProgress: ModuleProgress = {
@@ -48,10 +45,10 @@ export class ModuleProgressService {
 
     await this.dynamoClient.send(new PutCommand({
       TableName: MODULE_PROGRESS_TABLE,
-      Item: moduleProgress
+      Item: moduleProgress,
     }));
 
-    return { progress: moduleProgress, isNewCompletion };
+    return moduleProgress;
   }
 
   /**

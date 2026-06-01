@@ -8,10 +8,8 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ModuleProgressService } from '../services/module-progress.service';
-import { GamificationService } from '../services/gamification.service';
 import { CompleteModuleDto } from '../models/module-progress.dto';
 import { ModuleProgress } from '../models/module-progress.entity';
-import { GamificationSummaryDto } from '../models/gamification.dto';
 import { JwtAuthGuard } from '../strategies/jwt-auth.guard';
 import { Request as ExpressRequest } from 'express';
 import { User } from '../models/user.entity';
@@ -23,10 +21,7 @@ interface RequestWithUser extends ExpressRequest {
 @Controller('module-progress')
 @UseGuards(JwtAuthGuard)
 export class ModuleProgressController {
-  constructor(
-    private readonly moduleProgressService: ModuleProgressService,
-    private readonly gamificationService: GamificationService,
-  ) {}
+  constructor(private readonly moduleProgressService: ModuleProgressService) {}
 
   /**
    * Completar un módulo
@@ -36,37 +31,26 @@ export class ModuleProgressController {
   @Post('complete')
   async completeModule(
     @Body() body: { phoneNumber: string; moduleId: string; courseId: string; timeSpentMinutes?: number },
-    @Request() req: RequestWithUser
+    @Request() _req: RequestWithUser,
   ): Promise<{
     success: boolean;
     message: string;
     progress: ModuleProgress;
-    gamification: GamificationSummaryDto;
   }> {
     try {
       const completeModuleDto: CompleteModuleDto = {
         phoneNumber: body.phoneNumber,
         moduleId: body.moduleId,
         courseId: body.courseId,
-        timeSpentMinutes: body.timeSpentMinutes
+        timeSpentMinutes: body.timeSpentMinutes,
       };
 
-      const { progress, isNewCompletion } =
-        await this.moduleProgressService.completeModule(completeModuleDto);
-
-      const gamification = await this.gamificationService.onModuleCompleted(
-        body.phoneNumber,
-        body.courseId,
-        isNewCompletion,
-      );
+      const progress = await this.moduleProgressService.completeModule(completeModuleDto);
 
       return {
         success: true,
-        message: gamification.leveledUp
-          ? gamification.message
-          : 'Módulo completado exitosamente',
+        message: 'Módulo completado exitosamente',
         progress,
-        gamification,
       };
     } catch (error) {
       if (error instanceof HttpException) {
@@ -74,7 +58,7 @@ export class ModuleProgressController {
       }
       throw new HttpException(
         'Error al completar el módulo',
-        HttpStatus.INTERNAL_SERVER_ERROR
+        HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }

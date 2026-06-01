@@ -10,16 +10,18 @@ async function bootstrap() {
   // Configuración de CORS más específica
   app.enableCors({
     origin: [
-      'http://localhost:3000',    // Frontend local
-      'http://localhost:3001',    // Frontend alternativo
-      'http://localhost:4200',    // Angular por defecto
-      'http://localhost:8080',    // Vue.js por defecto
-      'http://127.0.0.1:3000',    // IP local
+      'http://localhost:3000',
+      'http://localhost:3001',
+      'http://localhost:4200',
+      'http://localhost:8080',
+      'http://127.0.0.1:3000',
       'http://127.0.0.1:3001',
       'http://127.0.0.1:4200',
       'http://127.0.0.1:8080',
-      // Agrega aquí tu dominio de producción cuando lo tengas
-      // 'https://tu-dominio.com',
+      'https://dev.tututor.co',
+      'http://dev.tututor.co',
+      'https://tututor.co',
+      'http://tututor.co',
     ],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: [
