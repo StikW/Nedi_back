@@ -14,15 +14,20 @@ import { AgentState } from '../../models/agent-state.entity';
 import { CourseModule } from '../../models/course-module.entity';
 import {
   CLASSIFIER_PROMPT,
+  CONVERSACION_INICIAL_PROMPT,
   CONVERSACION_PROMPT,
-  PREGUNTAS_PROMPT,
   RESPUESTAS_PROMPT,
   EXPLICAR_PROMPT,
+  RESUMEN_PROMPT,
 } from './prompts';
+import { MediaService } from './media.service';
+import { ModuleQuestion } from '../../models/course-module-questions.entity';
 
 export interface RuntimeContext {
   tenant: TenantContext;
   phoneNumber: string;
+  /** JID completo para responder por Evolution */
+  recipientJid?: string;
   state: AgentState;
   message: string;
   history: ChatTurn[];
@@ -47,11 +52,23 @@ export class AgentsService {
     private readonly questions: QuestionsService,
     private readonly agentState: AgentStateService,
     private readonly evolution: EvolutionService,
+    private readonly media: MediaService,
   ) {}
 
   // ===================================================================
-  //  Clasificador de intencion (fusion de los dos classifiers de n8n)
+  //  Conversacion inicial (primera interaccion / sesion vacia en n8n)
   // ===================================================================
+
+  async runConversacionInicial(ctx: RuntimeContext): Promise<string> {
+    const courses = await this.getStudentCourses(ctx);
+    const titles = JSON.stringify(courses.map((c) => c.title));
+    const system = `${CONVERSACION_INICIAL_PROMPT}\n\nCursos disponibles del estudiante: ${titles}`;
+    return this.llm.runAgent({
+      system,
+      userMessage: ctx.message,
+      history: [],
+    });
+  }
 
   async classify(ctx: RuntimeContext): Promise<IntentRoute> {
     const context = [
@@ -124,7 +141,6 @@ export class AgentsService {
       return 'Primero elige un curso para comenzar con las preguntas. ¿Cuál de tus cursos te gustaría iniciar?';
     }
 
-    // Resolver modulo activo (primer modulo publicado no completado)
     const previousModuleId = ctx.state.moduleId;
     let moduleId = ctx.state.moduleId;
     let activeModule: CourseModule | null = null;
@@ -136,7 +152,6 @@ export class AgentsService {
       moduleId = activeModule.id;
     }
 
-    // Entrar en flujo de preguntas
     ctx.state = await this.agentState.upsertState(
       ctx.tenant.evolution.instance,
       ctx.phoneNumber,
@@ -144,74 +159,47 @@ export class AgentsService {
       { flujo: 'preguntas', moduleId },
     );
 
-    // Al activar un modulo nuevo, enviar su contenido (video/media) una sola vez
-    // (equivalente al sub-workflow sendVideo de n8n).
+    // sendVideo (n8n): solo al entrar a un modulo nuevo
     if (moduleId !== previousModuleId) {
       await this.sendModuleIntro(ctx, activeModule || (await this.courseModuleService.findOne(moduleId)));
     }
 
-    const tools: AgentTool[] = [
-      {
-        name: 'obtener_pregunta',
-        description:
-          'Obtiene el estado actual del módulo y la pregunta disponible. Devuelve la pregunta, "questions:null" si no hay banco, o "¡Modulo Finalizado!".',
-        parameters: { type: 'object', properties: {} },
-        execute: async () => {
-          const current = await this.questions.getCurrentQuestion(courseId, moduleId!, ctx.phoneNumber);
-          if (current.state === 'empty') return JSON.stringify({ questions: null });
-          if (current.state === 'finished') return '¡Modulo Finalizado!';
-          return JSON.stringify({
-            index: current.index + 1,
-            total: current.total,
-            question: current.question,
-          });
-        },
-      },
-      {
-        name: 'generador_preguntas',
-        description:
-          'Genera el banco de preguntas del módulo (SOLO si obtener_pregunta devolvió questions:null).',
-        parameters: { type: 'object', properties: {} },
-        execute: async () => {
-          const generated = await this.questions.generateQuestions(courseId, moduleId!);
-          return generated.length > 0
-            ? `Se generaron ${generated.length} preguntas.`
-            : 'No fue posible generar preguntas con el material disponible.';
-        },
-      },
-      {
-        name: 'finish_module',
-        description:
-          'Marca el módulo como completado por el estudiante. Úsalo cuando obtener_pregunta devuelve "¡Modulo Finalizado!".',
-        parameters: { type: 'object', properties: {} },
-        execute: async () => {
-          await this.moduleProgressService.completeModule({
-            phoneNumber: ctx.phoneNumber,
-            moduleId: moduleId!,
-            courseId,
-          });
-          // Avanzar al siguiente modulo y volver a conversacion
-          ctx.state = await this.agentState.upsertState(
-            ctx.tenant.evolution.instance,
-            ctx.phoneNumber,
-            ctx.tenant.instructor.id,
-            { flujo: 'conversacion', moduleId: undefined, lastQuestion: undefined },
-          );
-          return 'Módulo marcado como completado.';
-        },
-      },
-    ];
+    // Obtener o generar banco de preguntas
+    let current = await this.questions.getCurrentQuestion(courseId, moduleId, ctx.phoneNumber);
+    if (current.state === 'empty') {
+      const generated = await this.questions.generateQuestions(courseId, moduleId);
+      if (generated.length === 0) {
+        return 'No fue posible generar preguntas con el material disponible. Intenta más tarde.';
+      }
+      current = await this.questions.getCurrentQuestion(courseId, moduleId, ctx.phoneNumber);
+    }
 
-    const answer = await this.llm.runAgent({
-      system: PREGUNTAS_PROMPT,
-      userMessage: ctx.message,
-      history: ctx.history,
-      tools,
-    });
+    if (current.state === 'finished') {
+      await this.moduleProgressService.completeModule({
+        phoneNumber: ctx.phoneNumber,
+        moduleId,
+        courseId,
+      });
+      await this.agentState.upsertState(
+        ctx.tenant.evolution.instance,
+        ctx.phoneNumber,
+        ctx.tenant.instructor.id,
+        { flujo: 'conversacion', moduleId: undefined, lastQuestion: undefined },
+      );
+      return '¡Felicidades! Has completado este módulo. 🎉';
+    }
 
-    // Guardar la pregunta actual como contexto para clasificar la proxima respuesta
+    if (current.state !== 'question') {
+      return 'No hay preguntas disponibles en este momento.';
+    }
+
+    const questionText = this.formatQuestion(current.question, current.index, current.total);
+
+    // AI Agent Resumen -> TTS -> audio, luego la pregunta en texto (flujo n8n)
+    await this.sendResumenAudio(ctx, questionText, courseId, moduleId);
+
     await this.refreshLastQuestion(ctx, courseId, moduleId);
-    return answer;
+    return questionText;
   }
 
   // ===================================================================
@@ -286,11 +274,13 @@ export class AgentsService {
   // ===================================================================
 
   /**
-   * Envia el contenido del modulo (video/imagen/documento o texto) por Evolution.
-   * Reemplaza el sub-workflow `sendVideo` de n8n.
+   * Intro del modulo (sub-workflow sendVideo en n8n):
+   * - Video/imagen: se envia el archivo.
+   * - PDF/otros: audio TTS con titulo + descripcion (no documento).
    */
   private async sendModuleIntro(ctx: RuntimeContext, module: CourseModule | null): Promise<void> {
     if (!module) return;
+    const to = this.replyTo(ctx);
     const content = (module.content || '').trim();
     const caption = module.title || '';
     try {
@@ -298,21 +288,72 @@ export class AgentsService {
         const lower = content.toLowerCase();
         const isVideo = /\.(mp4|mov|webm|mkv|avi)(\?|$)/.test(lower);
         const isImage = /\.(jpg|jpeg|png|gif|webp)(\?|$)/.test(lower);
-        const mediatype = isVideo ? 'video' : isImage ? 'image' : 'document';
-        await this.evolution.sendMedia(ctx.tenant.evolution, ctx.phoneNumber, content, {
-          mediatype,
-          caption,
-        });
-      } else if (module.description) {
-        await this.evolution.sendText(
-          ctx.tenant.evolution,
-          ctx.phoneNumber,
-          `📘 *${caption}*\n${module.description}`,
-        );
+        if (isVideo) {
+          await this.evolution.sendVideo(ctx.tenant.evolution, to, content, caption);
+          return;
+        }
+        if (isImage) {
+          await this.evolution.sendMedia(ctx.tenant.evolution, to, content, {
+            mediatype: 'image',
+            caption,
+          });
+          return;
+        }
+      }
+      // PDF u otro contenido: audio introductorio (como sendVideo en prod)
+      const introText = [caption, module.description].filter(Boolean).join('. ');
+      if (introText) {
+        const audio = await this.media.textToSpeechBase64(introText.slice(0, 4000));
+        if (audio) {
+          await this.evolution.sendAudio(ctx.tenant.evolution, to, audio);
+        }
       }
     } catch (err: any) {
       this.logger.warn(`No se pudo enviar intro del modulo ${module.id}: ${err?.message || err}`);
     }
+  }
+
+  /** Agente Resumen + TTS antes de mostrar la pregunta (flujo n8n). */
+  private async sendResumenAudio(
+    ctx: RuntimeContext,
+    questionText: string,
+    courseId: string,
+    moduleId: string,
+  ): Promise<void> {
+    try {
+      const resumen = await this.llm.runAgent({
+        system: RESUMEN_PROMPT,
+        userMessage: `Organiza una explicacion introductoria breve para esta pregunta:\n${questionText}`,
+        tools: [
+          this.ragTool(
+            'vector_questions',
+            'Obtiene material del modulo para la explicacion previa a la pregunta.',
+            ctx,
+            courseId,
+            moduleId,
+          ),
+        ],
+      });
+      if (!resumen?.trim()) return;
+      const audio = await this.media.textToSpeechBase64(resumen.slice(0, 4000));
+      if (audio) {
+        await this.evolution.sendAudio(ctx.tenant.evolution, this.replyTo(ctx), audio);
+      }
+    } catch (err: any) {
+      this.logger.warn(`No se pudo enviar audio-resumen: ${err?.message || err}`);
+    }
+  }
+
+  private formatQuestion(question: ModuleQuestion, index: number, total: number): string {
+    let text = `*Pregunta ${index + 1} de ${total}*\n\n${question.pregunta}`;
+    if (question.opciones?.length) {
+      text += '\n\n' + question.opciones.map((o, i) => `${i + 1}. ${o}`).join('\n');
+    }
+    return text;
+  }
+
+  private replyTo(ctx: RuntimeContext): string {
+    return ctx.recipientJid || ctx.phoneNumber;
   }
 
   private ragTool(

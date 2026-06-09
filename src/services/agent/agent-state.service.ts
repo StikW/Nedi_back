@@ -37,10 +37,17 @@ export class AgentStateService {
   // ===== Estado conversacional =====
 
   async getState(instance: string, phoneNumber: string): Promise<AgentState | null> {
-    const res = await this.dynamoClient.send(
-      new GetCommand({ TableName: AGENT_STATE_TABLE, Key: { id: this.stateId(instance, phoneNumber) } }),
-    );
-    return (res.Item as AgentState) || null;
+    try {
+      const res = await this.dynamoClient.send(
+        new GetCommand({ TableName: AGENT_STATE_TABLE, Key: { id: this.stateId(instance, phoneNumber) } }),
+      );
+      return (res.Item as AgentState) || null;
+    } catch (err: any) {
+      this.logger.error(
+        `DynamoDB GetItem falló (tabla="${AGENT_STATE_TABLE}", region=${process.env.AWS_REGION || '?'}): ${err?.message || err}`,
+      );
+      throw err;
+    }
   }
 
   async upsertState(
@@ -61,7 +68,14 @@ export class AgentStateService {
       lastQuestion: patch.lastQuestion ?? current?.lastQuestion,
       updatedAt: new Date().toISOString(),
     };
-    await this.dynamoClient.send(new PutCommand({ TableName: AGENT_STATE_TABLE, Item: next }));
+    try {
+      await this.dynamoClient.send(new PutCommand({ TableName: AGENT_STATE_TABLE, Item: next }));
+    } catch (err: any) {
+      this.logger.error(
+        `DynamoDB PutItem falló (tabla="${AGENT_STATE_TABLE}", region=${process.env.AWS_REGION || '?'}): ${err?.message || err}`,
+      );
+      throw err;
+    }
     return next;
   }
 

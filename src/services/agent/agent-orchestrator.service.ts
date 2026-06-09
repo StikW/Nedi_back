@@ -99,33 +99,41 @@ export class AgentOrchestratorService {
     const ctx: RuntimeContext = {
       tenant,
       phoneNumber,
+      recipientJid,
       state,
       message,
       history: this.memory.get(instance, phoneNumber),
     };
 
-    const route = await this.agents.classify(ctx);
-    this.logger.log(`[${instance}] ${phoneNumber} -> ${route} (flujo=${state.flujo})`);
-
     let reply = '';
+    const isFirstInteraction = ctx.history.length === 0;
+
     try {
-      switch (route) {
-        case 'AI_Preguntas':
-          reply = await this.agents.runPreguntas(ctx);
-          break;
-        case 'AI_Respuestas':
-          reply = await this.agents.runRespuestas(ctx);
-          break;
-        case 'AI_Explicar':
-          reply = await this.agents.runExplicar(ctx);
-          break;
-        case 'AI_Conversacion':
-        default:
-          reply = await this.agents.runConversacion(ctx);
-          break;
+      if (isFirstInteraction) {
+        this.logger.log(`[${instance}] ${phoneNumber} -> AI_ConversacionInicial (primera interaccion)`);
+        reply = await this.agents.runConversacionInicial(ctx);
+      } else {
+        const route = await this.agents.classify(ctx);
+        this.logger.log(`[${instance}] ${phoneNumber} -> ${route} (flujo=${state.flujo})`);
+
+        switch (route) {
+          case 'AI_Preguntas':
+            reply = await this.agents.runPreguntas(ctx);
+            break;
+          case 'AI_Respuestas':
+            reply = await this.agents.runRespuestas(ctx);
+            break;
+          case 'AI_Explicar':
+            reply = await this.agents.runExplicar(ctx);
+            break;
+          case 'AI_Conversacion':
+          default:
+            reply = await this.agents.runConversacion(ctx);
+            break;
+        }
       }
     } catch (err: any) {
-      this.logger.error(`Error en agente (${route}): ${err?.message || err}`);
+      this.logger.error(`Error en agente: ${err?.message || err}`);
       reply = 'Disculpa, tuve un inconveniente procesando tu mensaje. ¿Puedes intentarlo de nuevo?';
     }
 

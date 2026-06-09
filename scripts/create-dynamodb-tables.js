@@ -1,13 +1,19 @@
 /**
  * Script para crear todas las tablas DynamoDB del proyecto IA Learning en AWS.
  *
- * Uso:
- *   export AWS_REGION=us-east-1
+ * Uso (lee `.env` del proyecto si existe):
+ *   node scripts/create-dynamodb-tables.js
+ *
+ * O con variables explícitas:
+ *   export AWS_REGION=us-east-2
  *   export AWS_ACCESS_KEY_ID=...
  *   export AWS_SECRET_ACCESS_KEY=...
  *   export DYNAMODB_TABLE_PREFIX=dev_   # opcional; ej. dev_Users
  *   node scripts/create-dynamodb-tables.js
  */
+
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
 const {
   DynamoDBClient,
