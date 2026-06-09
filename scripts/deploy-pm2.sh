@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Reinicia el backend Nest en el servidor (PM2 + compilación).
+# Reinicia el backend Nest en el servidor (PM2).
+# Usa `npm start` (= nest start, sin build previo).
 # Uso: ./scripts/deploy-pm2.sh [nombre-proceso-pm2]
 
 set -euo pipefail
@@ -9,11 +10,8 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 cd "$ROOT"
 
-echo "==> Instalando dependencias..."
+echo "==> Instalando dependencias (incluye @nestjs/cli para nest start)..."
 npm install
-
-echo "==> Compilando TypeScript (genera dist/)..."
-npm run build
 
 if pm2 describe "$APP_NAME" >/dev/null 2>&1; then
   echo "==> Reiniciando PM2: $APP_NAME"
