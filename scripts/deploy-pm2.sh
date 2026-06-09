@@ -20,7 +20,7 @@ if pm2 describe "$APP_NAME" >/dev/null 2>&1; then
   pm2 restart "$APP_NAME" --update-env
 else
   echo "==> Iniciando PM2: $APP_NAME"
-  pm2 start dist/main.js --name "$APP_NAME"
+  pm2 start npm --name "$APP_NAME" --cwd "$ROOT" -- start
 fi
 
 pm2 save
