@@ -63,6 +63,10 @@ export default registerAs('env', () => ({
   openaiTtsModel: process.env.OPENAI_TTS_MODEL || 'gpt-4o-mini-tts',
   openaiTtsVoice: process.env.OPENAI_TTS_VOICE || 'alloy',
   openaiEmbeddingModel: process.env.OPENAI_EMBEDDING_MODEL || 'text-embedding-3-small',
+  // n8n usa text-embedding-3-small con dimensions=512; el indice Pinecone `courses` es 512
+  openaiEmbeddingDimensions: process.env.OPENAI_EMBEDDING_DIMENSIONS
+    ? Number(process.env.OPENAI_EMBEDDING_DIMENSIONS)
+    : 512,
 
   // Pinecone (RAG): un solo indice, namespace = courseId, metadata module = moduleId
   pineconeApiKey: process.env.PINECONE_API_KEY,

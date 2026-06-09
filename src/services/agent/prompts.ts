@@ -183,7 +183,7 @@ Eres el Clasificador de Intenciones del sistema de aprendizaje. Tu única funci�
 
 ## Salidas posibles (devuelve UNA sola etiqueta, sin texto adicional)
 - AI_Conversacion: Navegación, preguntas generales, saludos, despedidas, selección de curso.
-- AI_Preguntas: Solicitud de nuevas preguntas o intención de continuar el aprendizaje ("siguiente", "otra pregunta", "continuar", "empecemos el módulo").
+- AI_Preguntas: Solicitud de nuevas preguntas o intención de continuar el aprendizaje ("siguiente", "otra pregunta", "continuar", "comencemos", "empecemos el módulo").
 - AI_Respuestas: El usuario responde/valida la última pregunta mostrada ("la A", "opción 3", "creo que es la B", afirmaciones que parecen una respuesta).
 - AI_Explicar: El usuario admite no saber o pide aclaración sobre la pregunta reciente ("no sé", "explícame", "¿por qué?").
 

@@ -321,9 +321,11 @@ export class AgentsService {
     moduleId: string,
   ): Promise<void> {
     try {
+      const module = await this.courseModuleService.findOne(moduleId);
+      const moduleHint = module?.title ? `Modulo: ${module.title}\n` : '';
       const resumen = await this.llm.runAgent({
         system: RESUMEN_PROMPT,
-        userMessage: `Organiza una explicacion introductoria breve para esta pregunta:\n${questionText}`,
+        userMessage: `${moduleHint}Organiza una explicacion introductoria breve para esta pregunta:\n${questionText}`,
         tools: [
           this.ragTool(
             'vector_questions',
@@ -331,6 +333,7 @@ export class AgentsService {
             ctx,
             courseId,
             moduleId,
+            module?.title,
           ),
         ],
       });
@@ -362,6 +365,7 @@ export class AgentsService {
     ctx: RuntimeContext,
     courseId?: string,
     moduleId?: string,
+    fallbackQuery?: string,
   ): AgentTool {
     return {
       name,
@@ -373,7 +377,11 @@ export class AgentsService {
       },
       execute: async (args) => {
         if (!courseId) return 'No hay curso activo.';
-        const context = await this.rag.retrieveContext(courseId, moduleId, args.query || ctx.message, 4);
+        const primary = args.query || fallbackQuery || ctx.message;
+        let context = await this.rag.retrieveContext(courseId, moduleId, primary, 4);
+        if (!context?.trim() && fallbackQuery && primary !== fallbackQuery) {
+          context = await this.rag.retrieveContext(courseId, moduleId, fallbackQuery, 4);
+        }
         return context || 'No se encontró material relevante en el módulo.';
       },
     };

@@ -17,6 +17,7 @@ export class RagService {
   private readonly openai: OpenAI;
   private readonly indexName: string;
   private readonly embeddingModel: string;
+  private readonly embeddingDimensions: number;
 
   constructor(private readonly configService: ConfigService) {
     const pineconeKey = this.configService.get<string>('PINECONE_API_KEY');
@@ -27,11 +28,17 @@ export class RagService {
     this.indexName = this.configService.get<string>('PINECONE_INDEX') || 'courses';
     this.embeddingModel =
       this.configService.get<string>('OPENAI_EMBEDDING_MODEL') || 'text-embedding-3-small';
+    const dims = this.configService.get<number | string>('OPENAI_EMBEDDING_DIMENSIONS');
+    this.embeddingDimensions = dims != null && dims !== '' ? Number(dims) : 512;
   }
 
-  /** Genera el embedding de un texto. */
+  /** Genera el embedding de un texto (512 dims, igual que n8n / indice Pinecone). */
   async embed(text: string): Promise<number[]> {
-    const res = await this.openai.embeddings.create({ model: this.embeddingModel, input: text });
+    const res = await this.openai.embeddings.create({
+      model: this.embeddingModel,
+      input: text,
+      dimensions: this.embeddingDimensions,
+    });
     return res.data[0].embedding as number[];
   }
 
@@ -39,6 +46,15 @@ export class RagService {
    * Recupera fragmentos relevantes del modulo y los concatena como contexto.
    * @returns texto de contexto (vacio si no hay Pinecone o sin resultados)
    */
+  /** Descarta fragmentos basura del indice legacy de n8n (ej. "es_419", "1.4"). */
+  private isUsefulChunk(text: string): boolean {
+    const t = text.trim();
+    if (t.length < 40) return false;
+    if (/^es_[a-z0-9]{2,6}$/i.test(t)) return false;
+    if (/^[\d.]+$/.test(t)) return false;
+    return true;
+  }
+
   async retrieveContext(
     courseId: string,
     moduleId: string | undefined,
@@ -53,14 +69,16 @@ export class RagService {
       const vector = await this.embed(query);
       const ns = this.pinecone.index(this.indexName).namespace(courseId);
       const result = await ns.query({
-        topK,
+        // Consultamos mas resultados y filtramos ruido; luego nos quedamos con topK utiles
+        topK: Math.max(topK * 3, 12),
         vector,
         includeMetadata: true,
         ...(moduleId ? { filter: { module: { $eq: moduleId } } } : {}),
       });
       const chunks = (result.matches || [])
         .map((m) => (m.metadata?.text || m.metadata?.pageContent || '') as string)
-        .filter((t) => t && t.trim().length > 0);
+        .filter((t) => this.isUsefulChunk(t))
+        .slice(0, topK);
       return chunks.join('\n---\n');
     } catch (err: any) {
       this.logger.error(`Error consultando Pinecone: ${err?.message || err}`);
