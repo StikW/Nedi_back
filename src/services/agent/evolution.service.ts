@@ -1,0 +1,96 @@
+import { Injectable, Logger } from '@nestjs/common';
+import { EvolutionConfig } from './agent.types';
+
+/**
+ * Cliente del gateway de WhatsApp via Evolution API.
+ *
+ * Reemplaza los nodos `Send message`, `Send audio`, `Send media`, `get_audio`
+ * y `get_image` del workflow de n8n. Toda la config (servidor, instancia,
+ * apikey) llega por parametro -> nada hardcodeado, multi-instructor.
+ */
+@Injectable()
+export class EvolutionService {
+  private readonly logger = new Logger(EvolutionService.name);
+
+  private headers(cfg: EvolutionConfig): Record<string, string> {
+    return {
+      'Content-Type': 'application/json',
+      apikey: cfg.apiKey,
+    };
+  }
+
+  private base(cfg: EvolutionConfig): string {
+    return (cfg.serverUrl || '').replace(/\/+$/, '');
+  }
+
+  /** Envia un mensaje de texto al estudiante. */
+  async sendText(cfg: EvolutionConfig, to: string, text: string): Promise<void> {
+    await this.post(cfg, `/message/sendText/${cfg.instance}`, {
+      number: to,
+      text,
+    });
+  }
+
+  /** Envia una nota de voz (audio en base64). */
+  async sendAudio(cfg: EvolutionConfig, to: string, audioBase64: string): Promise<void> {
+    await this.post(cfg, `/message/sendWhatsAppAudio/${cfg.instance}`, {
+      number: to,
+      audio: audioBase64,
+    });
+  }
+
+  /** Envia media (imagen/documento/video) por URL o base64. */
+  async sendMedia(
+    cfg: EvolutionConfig,
+    to: string,
+    media: string,
+    options: { mediatype?: 'image' | 'video' | 'document'; caption?: string; fileName?: string } = {},
+  ): Promise<void> {
+    await this.post(cfg, `/message/sendMedia/${cfg.instance}`, {
+      number: to,
+      mediatype: options.mediatype || 'image',
+      media,
+      caption: options.caption,
+      fileName: options.fileName,
+    });
+  }
+
+  /** Envia un video del modulo (equivalente al sub-workflow sendVideo). */
+  async sendVideo(cfg: EvolutionConfig, to: string, media: string, caption?: string): Promise<void> {
+    await this.sendMedia(cfg, to, media, { mediatype: 'video', caption });
+  }
+
+  /**
+   * Descarga el contenido base64 de un mensaje de media (audio/imagen) recibido.
+   * Equivale a `get_audio` / `get_image` (getBase64FromMediaMessage).
+   */
+  async getBase64FromMediaMessage(cfg: EvolutionConfig, rawMessage: any): Promise<string | null> {
+    try {
+      const res = await this.post(cfg, `/chat/getBase64FromMediaMessage/${cfg.instance}`, {
+        message: rawMessage,
+        convertToMp4: false,
+      });
+      return res?.base64 || null;
+    } catch (err: any) {
+      this.logger.error(`Error descargando media de Evolution: ${err?.message || err}`);
+      return null;
+    }
+  }
+
+  private async post(cfg: EvolutionConfig, path: string, body: any): Promise<any> {
+    const url = `${this.base(cfg)}${path}`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: this.headers(cfg),
+      body: JSON.stringify(body),
+    });
+    const json: any = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      this.logger.error(
+        `Evolution ${path} fallo status=${res.status} msg=${json?.message || JSON.stringify(json).slice(0, 200)}`,
+      );
+      throw new Error(`Evolution API error ${res.status}`);
+    }
+    return json;
+  }
+}

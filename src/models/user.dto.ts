@@ -90,4 +90,11 @@ export class UserResponseDto {
   public apiKey?: string;
   /** Value for external services */
   public value?: string;
+
+  /** Instancia Evolution asignada al instructor (p.ej. nedi_<id>) */
+  public evolutionInstance?: string;
+  /** Numero de WhatsApp vinculado a la instancia (E.164 sin +) */
+  public evolutionNumber?: string;
+  /** Estado de la conexion Evolution: disconnected | connecting | connected */
+  public evolutionStatus?: 'disconnected' | 'connecting' | 'connected';
 }

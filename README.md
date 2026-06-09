@@ -32,7 +32,7 @@ El script ejecuta `npm install`, `npm run build` y reinicia PM2. Verifica:
 
 ```bash
 curl -s http://127.0.0.1:3000/health
-curl -s https://dev.tututor.co/api/health
+curl -s https://tututor.co/api/health
 ```
 
 ## Variables de entorno

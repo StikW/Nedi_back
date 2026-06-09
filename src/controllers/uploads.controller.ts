@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, Param, UseGuards, Request, ForbiddenException } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, UseGuards, Request } from '@nestjs/common';
 import { UploadsService } from '../services/uploads.service';
 import { JwtAuthGuard } from '../strategies/jwt-auth.guard';
 import { Request as ExpressRequest } from 'express';
@@ -20,11 +20,11 @@ interface RequestWithUser extends ExpressRequest {
 @Controller('uploads')
 @UseGuards(JwtAuthGuard)
 export class UploadsController {
-  private readonly n8nWebhookUrl: string;
-  constructor(private readonly uploadsService: UploadsService, private readonly courseService: CourseService, private readonly configService: ConfigService) {
-    this.n8nWebhookUrl = this.configService.get<string>('N8N_WEBHOOK_URL')
-    || 'https://n8n.tututor.co/webhook/vectorizacion';
-  }
+  constructor(
+    private readonly uploadsService: UploadsService,
+    private readonly courseService: CourseService,
+    private readonly configService: ConfigService,
+  ) {}
 
   /**
    * Generate a pre-signed URL for uploading a file (original endpoint)
@@ -72,46 +72,6 @@ export class UploadsController {
     // This could be done by checking if the user is the instructor of the course
 
     return this.uploadsService.getModuleUploadUrl(courseId, moduleId, filename, contentType);
-  }
-  @Post('module/trigger-vectorization')
-  async triggerVectorization(
-    @Body() body: { courseId: string, moduleId: string},
-    @Request() req: RequestWithUser,
-  ) {
-    const { courseId, moduleId } = body
-    const course = await this.courseService.findOne(courseId, req.user.id);
-    if(!course) {
-      throw new ForbiddenException('Curso no encontrado o acceso denegado');
-    }
-    try {
-      const response = await fetch(this.n8nWebhookUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          courseId: courseId,
-          moduleId: moduleId,
-        }),
-      });
-      if(!response.ok) {
-        console.error('Error al triggerizar la vectorización en n8n', response.statusText);
-        return {
-          success: false,
-          message: `Error al procesar la vectorización: ${response.statusText}`,
-        }
-      }
-      return {
-        success: true,
-        message: 'Vectorización iniciada exitosamente',
-      }
-    } catch (error) {
-      console.error('Error al conectar con el webhook de n8n', error);
-      return {
-        success: false,
-        message: `Error al conectar con n8n: ${error.message}`,
-      }
-    }
   }
   /**
    * Generate a pre-signed URL for downloading a file (original endpoint)

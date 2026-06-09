@@ -41,6 +41,16 @@ export interface User {
   accessToken?: string;
   /** API Key for external services */
   apiKey?: string;
+
+  // ===== Evolution API (numero de capacitacion del instructor) =====
+  /** Nombre de la instancia de Evolution asignada al instructor (p.ej. nedi_<id>) */
+  evolutionInstance?: string;
+  /** API key de la instancia devuelta por Evolution al crearla */
+  evolutionApiKey?: string;
+  /** Numero de WhatsApp vinculado a la instancia (E.164 sin +) */
+  evolutionNumber?: string;
+  /** Estado de la conexion: disconnected | connecting | connected */
+  evolutionStatus?: 'disconnected' | 'connecting' | 'connected';
 }
 
 const _tablePrefix = process.env.DYNAMODB_TABLE_PREFIX || '';

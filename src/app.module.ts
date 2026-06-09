@@ -15,6 +15,7 @@ import { N8nCredentialsModule } from './modules/n8n-credentials.module';
 import { TemplateModule } from './modules/template.module';
 import { PublicConfigModule } from './modules/public-config.module';
 import { RemindersModule } from './modules/reminders.module';
+import { AgentModule } from './modules/agent.module';
 import envConfig from './core/config/env.config';
 
 @Module({
@@ -41,6 +42,7 @@ import envConfig from './core/config/env.config';
     ModuleProgressModule,
     N8nCredentialsModule,
     RemindersModule,
+    AgentModule,
   ],
 })
 export class AppModule {} 

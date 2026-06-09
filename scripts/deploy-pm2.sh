@@ -29,4 +29,4 @@ echo "==> Probando health local..."
 sleep 2
 curl -sf "http://127.0.0.1:3000/health" | head -c 200
 echo ""
-echo "Listo. Verifica: curl https://dev.tututor.co/api/health"
+echo "Listo. Verifica: curl https://tututor.co/api/health"

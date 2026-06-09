@@ -1,6 +1,6 @@
 # API REST (NestJS)
 
-Base URL en servidor: `https://dev.tututor.co/api` o `https://tututor.co/api` (Nginx reenvía `/api/*` al proceso Nest en el puerto 3000).  
+Base URL en servidor: `https://tututor.co/api` (Nginx reenvía `/api/*` al proceso Nest en el puerto 3000).
 Rutas en Nest: sin prefijo `/api` (por ejemplo `POST /auth/login` en local es `http://localhost:3000/auth/login`).
 
 ## Autenticación

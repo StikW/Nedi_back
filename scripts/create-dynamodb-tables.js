@@ -168,6 +168,14 @@ const tables = [
     attributeDefinitions: [{ AttributeName: 'token', AttributeType: 'S' }],
     globalSecondaryIndexes: [],
   },
+  {
+    // Estado conversacional del agente Nedi por (instancia + telefono).
+    // id compuesto: `${instance}#${phoneNumber}`
+    name: tableName('AgentState'),
+    keySchema: [{ AttributeName: 'id', KeyType: 'HASH' }],
+    attributeDefinitions: [{ AttributeName: 'id', AttributeType: 'S' }],
+    globalSecondaryIndexes: [],
+  },
 ];
 
 async function tableExists(client, name) {

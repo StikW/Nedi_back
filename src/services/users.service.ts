@@ -137,12 +137,71 @@ export class UsersService {
   }
 
   /**
-   * Devuelve el perfil del usuario autenticado (sin password).
+   * Busca un instructor por el nombre de su instancia de Evolution.
+   * Usado por el agente para resolver el tenant en cada webhook entrante.
+   */
+  public async findByEvolutionInstance(instance: string): Promise<User | null> {
+    if (!instance) return null;
+    const result = await this.dynamoClient.send(
+      new ScanCommand({
+        TableName: USERS_TABLE,
+        FilterExpression: 'evolutionInstance = :instance',
+        ExpressionAttributeValues: { ':instance': instance },
+        Limit: 1,
+      }),
+    );
+    return (result.Items?.[0] as User) || null;
+  }
+
+  /**
+   * Actualiza la configuracion de Evolution (numero de capacitacion) de un instructor.
+   */
+  public async updateEvolutionConfig(
+    userId: string,
+    config: Partial<
+      Pick<User, 'evolutionInstance' | 'evolutionApiKey' | 'evolutionNumber' | 'evolutionStatus'>
+    >,
+  ): Promise<void> {
+    const updateExpression: string[] = [];
+    const names: Record<string, string> = {};
+    const values: Record<string, any> = {};
+
+    for (const [key, value] of Object.entries(config)) {
+      if (value === undefined) continue;
+      updateExpression.push(`#${key} = :${key}`);
+      names[`#${key}`] = key;
+      values[`:${key}`] = value;
+    }
+
+    if (updateExpression.length === 0) return;
+
+    updateExpression.push('#updatedAt = :updatedAt');
+    names['#updatedAt'] = 'updatedAt';
+    values[':updatedAt'] = new Date().toISOString();
+
+    await this.dynamoClient.send(
+      new UpdateCommand({
+        TableName: USERS_TABLE,
+        Key: { id: userId },
+        UpdateExpression: `SET ${updateExpression.join(', ')}`,
+        ExpressionAttributeNames: names,
+        ExpressionAttributeValues: values,
+      }),
+    );
+  }
+
+  /** Excluye campos sensibles antes de enviar el usuario al cliente. */
+  private toPublicUser(user: User): UserResponseDto {
+    const { password, evolutionApiKey, ...rest } = user;
+    return rest as UserResponseDto;
+  }
+
+  /**
+   * Devuelve el perfil del usuario autenticado (sin password ni evolutionApiKey).
    */
   public async getMyProfile(userId: string): Promise<UserResponseDto> {
     const user = await this.findById(userId);
-    const { password, ...rest } = user;
-    return rest as UserResponseDto;
+    return this.toPublicUser(user);
   }
 
   /**
@@ -275,10 +334,9 @@ export class UsersService {
       await this.updateInstructorCredentialsInN8n(userId, updateDto);
     }
 
-    // Return updated user without password
+    // Return updated user without sensitive fields
     const updatedUser = await this.findById(userId);
-    const { password, ...userWithoutPassword } = updatedUser;
-    return userWithoutPassword as UserResponseDto;
+    return this.toPublicUser(updatedUser);
   }
 
   /**

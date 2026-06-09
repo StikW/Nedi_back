@@ -149,6 +149,50 @@ export class UploadsService {
   }
 
   /**
+   * Lista las keys de los archivos subidos a un modulo (bucket de modulos).
+   * Usado por la vectorizacion para procesar PDF/TXT del modulo.
+   */
+  async listModuleFileKeys(courseId: string, moduleId: string): Promise<string[]> {
+    const prefix = `courses/${courseId}/modules/${moduleId}/`;
+    const keys: string[] = [];
+    let continuationToken: string | undefined;
+
+    do {
+      const listResult = await this.s3Client.send(
+        new ListObjectsV2Command({
+          Bucket: this.modulesBucketName,
+          Prefix: prefix,
+          MaxKeys: 1000,
+          ContinuationToken: continuationToken,
+        }),
+      );
+
+      for (const obj of listResult.Contents || []) {
+        // Ignorar "carpetas" (keys que terminan en /)
+        if (obj.Key && !obj.Key.endsWith('/')) keys.push(obj.Key);
+      }
+      continuationToken = listResult.NextContinuationToken;
+    } while (continuationToken);
+
+    return keys;
+  }
+
+  /**
+   * Descarga el contenido binario de un objeto del bucket de modulos.
+   */
+  async getModuleFileBuffer(key: string): Promise<Buffer> {
+    const result = await this.s3Client.send(
+      new GetObjectCommand({ Bucket: this.modulesBucketName, Key: key }),
+    );
+    const stream = result.Body as NodeJS.ReadableStream;
+    const chunks: Buffer[] = [];
+    for await (const chunk of stream) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    }
+    return Buffer.concat(chunks);
+  }
+
+  /**
    * Delete all files in a module folder from S3
    * Note: S3 doesn't have "folders" - they're just prefixes. We need to delete all objects with the prefix.
    */

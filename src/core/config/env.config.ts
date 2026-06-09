@@ -52,4 +52,28 @@ export default registerAs('env', () => ({
   // Modo PROD (2 cron jobs separados; welcome se dispara on-create)
   reminderDailyCronSchedule: process.env.REMINDER_DAILY_CRON_SCHEDULE,
   reminderWeeklyCronSchedule: process.env.REMINDER_WEEKLY_CRON_SCHEDULE,
+
+  // ===== Agente Nedi (microlearning por WhatsApp / Evolution) =====
+  // OpenAI
+  openaiApiKey: process.env.OPENAI_API_KEY,
+  openaiChatModel: process.env.OPENAI_CHAT_MODEL || 'gpt-5-mini',
+  openaiClassifierModel: process.env.OPENAI_CLASSIFIER_MODEL || process.env.OPENAI_CHAT_MODEL || 'gpt-5-mini',
+  openaiTranscribeModel: process.env.OPENAI_TRANSCRIBE_MODEL || 'gpt-4o-transcribe',
+  openaiVisionModel: process.env.OPENAI_VISION_MODEL || 'gpt-4o-mini',
+  openaiTtsModel: process.env.OPENAI_TTS_MODEL || 'gpt-4o-mini-tts',
+  openaiTtsVoice: process.env.OPENAI_TTS_VOICE || 'alloy',
+  openaiEmbeddingModel: process.env.OPENAI_EMBEDDING_MODEL || 'text-embedding-3-small',
+
+  // Pinecone (RAG): un solo indice, namespace = courseId, metadata module = moduleId
+  pineconeApiKey: process.env.PINECONE_API_KEY,
+  pineconeIndex: process.env.PINECONE_INDEX || 'courses',
+
+  // Evolution API (servidor global; instancia/apikey por instructor van en User)
+  evolutionServerUrl: process.env.EVOLUTION_SERVER_URL,
+  evolutionAdminApiKey: process.env.EVOLUTION_ADMIN_API_KEY,
+
+  // URL publica del webhook del agente (para configurar el webhook de cada instancia)
+  agentWebhookPublicUrl: process.env.AGENT_WEBHOOK_PUBLIC_URL,
+  // Segundos de buffer/debounce de mensajes entrantes
+  agentBufferSeconds: process.env.AGENT_BUFFER_SECONDS ? Number(process.env.AGENT_BUFFER_SECONDS) : 5,
 }));
