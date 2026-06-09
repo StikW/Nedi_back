@@ -1,4 +1,4 @@
-import { Body, Controller, HttpCode, Post } from '@nestjs/common';
+import { Body, Controller, HttpCode, Logger, Post } from '@nestjs/common';
 import { AgentOrchestratorService } from '../services/agent/agent-orchestrator.service';
 
 /**
@@ -8,13 +8,19 @@ import { AgentOrchestratorService } from '../services/agent/agent-orchestrator.s
  */
 @Controller('agent')
 export class AgentWebhookController {
+  private readonly logger = new Logger(AgentWebhookController.name);
+
   constructor(private readonly orchestrator: AgentOrchestratorService) {}
 
   @Post('webhook')
   @HttpCode(200)
   handleWebhook(@Body() payload: any): { received: true } {
-    // Fire-and-forget: el procesamiento (LLM, RAG, envio) ocurre async.
-    this.orchestrator.handleWebhook(payload).catch(() => undefined);
+    const instance = payload?.instance || payload?.body?.instance || '?';
+    this.logger.log(`Webhook Evolution recibido (instance=${instance})`);
+
+    this.orchestrator.handleWebhook(payload).catch((err: any) => {
+      this.logger.error(`Error procesando webhook (${instance}): ${err?.message || err}`, err?.stack);
+    });
     return { received: true };
   }
 }

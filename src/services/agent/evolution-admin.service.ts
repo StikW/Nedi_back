@@ -149,6 +149,10 @@ export class EvolutionAdminService {
     if (status === 'connected') {
       const fetched = await this.fetchInstanceNumber(instance, apiKey);
       if (fetched) number = fetched;
+      const webhook = this.webhookUrl();
+      if (webhook) {
+        await this.safeSetWebhook(instance, apiKey, webhook);
+      }
     }
 
     await this.usersService.updateEvolutionConfig(fresh.id, {

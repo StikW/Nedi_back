@@ -49,22 +49,42 @@ export class AgentOrchestratorService {
     }
 
     const tenant = await this.tenantService.resolve(parsed.instance, parsed.apikey);
-    if (!tenant) return;
+    if (!tenant) {
+      this.logger.warn(
+        `Webhook ignorado: sin instructor para instance="${parsed.instance}" phone=${parsed.phoneNumber}`,
+      );
+      return;
+    }
 
     // Convertir media a texto (audio/imagen)
     const text = await this.toText(tenant, parsed);
-    if (!text || !text.trim()) return;
+    if (!text || !text.trim()) {
+      this.logger.debug(
+        `[${parsed.instance}] Mensaje sin texto (type=${parsed.messageType}) de ${parsed.phoneNumber}`,
+      );
+      return;
+    }
 
     const key = `${parsed.instance}:${parsed.phoneNumber}`;
     const debounceMs = (this.configService.get<number>('AGENT_BUFFER_SECONDS') || 5) * 1000;
+    const recipientJid = parsed.recipientJid;
+
+    this.logger.log(
+      `[${parsed.instance}] Mensaje de ${parsed.phoneNumber}: "${text.slice(0, 80)}${text.length > 80 ? '…' : ''}"`,
+    );
 
     this.buffer.push(key, text, debounceMs, async (concat) => {
-      await this.process(tenant, parsed.phoneNumber, concat);
+      await this.process(tenant, parsed.phoneNumber, concat, recipientJid);
     });
   }
 
   /** Nucleo: clasifica y ejecuta el agente correspondiente. */
-  private async process(tenant: TenantContext, phoneNumber: string, message: string): Promise<void> {
+  private async process(
+    tenant: TenantContext,
+    phoneNumber: string,
+    message: string,
+    recipientJid: string,
+  ): Promise<void> {
     if (!message.trim()) return;
     const instance = tenant.evolution.instance;
 
@@ -113,14 +133,19 @@ export class AgentOrchestratorService {
       reply = '¿En qué puedo ayudarte con tu aprendizaje?';
     }
 
-    await this.send(tenant, phoneNumber, reply);
+    await this.send(tenant, phoneNumber, reply, recipientJid);
     this.memory.append(instance, phoneNumber, message, reply);
   }
 
   /** Envia la respuesta al estudiante por Evolution. */
-  private async send(tenant: TenantContext, phoneNumber: string, reply: string): Promise<void> {
+  private async send(
+    tenant: TenantContext,
+    phoneNumber: string,
+    reply: string,
+    recipientJid: string,
+  ): Promise<void> {
     try {
-      await this.evolution.sendText(tenant.evolution, phoneNumber, reply);
+      await this.evolution.sendText(tenant.evolution, recipientJid || phoneNumber, reply);
     } catch (err: any) {
       this.logger.error(`No se pudo enviar respuesta a ${phoneNumber}: ${err?.message || err}`);
     }
@@ -146,10 +171,12 @@ export class AgentOrchestratorService {
 
   /**
    * Normaliza el payload de Evolution (event MESSAGES_UPSERT). Equivale al
-   * nodo `parser` de n8n.
+   * nodo `parser` de n8n (incluye remoteJidAlt para contactos @lid).
    */
   private parse(payload: any): ParsedIncomingMessage | null {
-    const data = payload?.data || payload;
+    const root = payload?.body || payload;
+    const rawData = root?.data ?? root;
+    const data = Array.isArray(rawData) ? rawData[0] : rawData;
     const key = data?.key;
     if (!key) return null;
 
@@ -158,11 +185,14 @@ export class AgentOrchestratorService {
     const remoteJid: string = key.remoteJid || '';
     if (remoteJid.endsWith('@g.us')) return null;
 
-    const phoneNumber = remoteJid.split('@')[0];
+    const remoteJidAlt: string = key.remoteJidAlt || '';
+    const usePrimaryJid = remoteJid.includes('s.whatsapp.net');
+    const recipientJid = usePrimaryJid ? remoteJid : remoteJidAlt || remoteJid;
+    const phoneNumber = recipientJid.split('@')[0];
     if (!phoneNumber) return null;
 
-    const instance = payload?.instance || data?.instance || '';
-    const apikey = payload?.apikey || data?.apikey || '';
+    const instance = root?.instance || payload?.instance || data?.instance || '';
+    const apikey = root?.apikey || payload?.apikey || data?.apikey || '';
     const messageType = data?.messageType || '';
 
     const msg = data?.message || {};
@@ -173,6 +203,7 @@ export class AgentOrchestratorService {
 
     return {
       phoneNumber,
+      recipientJid,
       message: text,
       messageType: messageType || (msg.conversation ? 'conversation' : ''),
       instance,

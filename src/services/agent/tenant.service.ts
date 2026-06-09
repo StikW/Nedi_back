@@ -30,21 +30,23 @@ export class TenantService {
       return null;
     }
 
-    // Validacion opcional de apikey: si el instructor tiene una guardada y el
-    // payload trae otra distinta, se rechaza.
+    // Validacion opcional de apikey: si difiere de la guardada, seguimos con la
+    // almacenada o la del payload (Evolution a veces envia la global).
     if (apikey && instructor.evolutionApiKey && instructor.evolutionApiKey !== apikey) {
-      this.logger.warn(`apikey invalida para la instancia "${instance}"`);
-      return null;
+      this.logger.warn(
+        `apikey distinta para instancia "${instance}"; se usa la guardada o la del webhook`,
+      );
     }
 
     const serverUrl = this.configService.get<string>('EVOLUTION_SERVER_URL') || '';
+    const adminKey = this.configService.get<string>('EVOLUTION_ADMIN_API_KEY') || '';
 
     return {
       instructor,
       evolution: {
         serverUrl,
         instance,
-        apiKey: instructor.evolutionApiKey || apikey || '',
+        apiKey: instructor.evolutionApiKey || apikey || adminKey,
       },
     };
   }

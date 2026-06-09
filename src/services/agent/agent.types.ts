@@ -46,6 +46,8 @@ export interface ParsedIncomingMessage {
   apikey: string;
   /** id del mensaje (para idempotencia) */
   messageId?: string;
+  /** JID completo para responder (p. ej. 57300...@s.whatsapp.net) */
+  recipientJid: string;
   /** payload crudo (para descargar media) */
   raw: any;
 }
