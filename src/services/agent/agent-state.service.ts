@@ -66,9 +66,13 @@ export class AgentStateService {
       phoneNumber,
       instructorId,
       flujo: (patch.flujo ?? current?.flujo ?? 'conversacion') as ConversationFlow,
-      courseId: patch.courseId ?? current?.courseId,
-      moduleId: patch.moduleId ?? current?.moduleId,
-      lastQuestion: patch.lastQuestion ?? current?.lastQuestion,
+      courseId: 'courseId' in patch ? patch.courseId : current?.courseId,
+      moduleId: 'moduleId' in patch ? patch.moduleId : current?.moduleId,
+      lastQuestion: 'lastQuestion' in patch ? patch.lastQuestion : current?.lastQuestion,
+      lastSessionAt: 'lastSessionAt' in patch ? patch.lastSessionAt : current?.lastSessionAt,
+      offeredNextModuleId: 'offeredNextModuleId' in patch
+        ? patch.offeredNextModuleId
+        : current?.offeredNextModuleId,
       updatedAt: new Date().toISOString(),
     };
     try {
@@ -80,6 +84,18 @@ export class AgentStateService {
       throw err;
     }
     return next;
+  }
+
+  /**
+   * Equivalente a n8n `get_session` + `If`/`If1`: sin sesion o inactivo mas de
+   * `timeoutMinutes` → conversacion inicial (AI Agent1).
+   */
+  isSessionExpired(state: AgentState | null, timeoutMinutes: number): boolean {
+    if (!state) return true;
+    const anchor = state.lastSessionAt ?? state.updatedAt;
+    if (!anchor) return true;
+    const elapsedMs = Date.now() - new Date(anchor).getTime();
+    return elapsedMs > timeoutMinutes * 60 * 1000;
   }
 
   // ===== Banco de preguntas =====

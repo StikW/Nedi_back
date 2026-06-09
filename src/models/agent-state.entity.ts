@@ -18,6 +18,13 @@ export interface AgentState {
   flujo: ConversationFlow;
   /** Texto de la ultima pregunta mostrada (para clasificar respuestas) */
   lastQuestion?: string;
+  /**
+   * Ultima actividad del estudiante (equivalente a Redis `get_session` en n8n).
+   * Si supera AGENT_SESSION_TIMEOUT_MINUTES sin mensajes, se dispara conversacion inicial.
+   */
+  lastSessionAt?: string;
+  /** Siguiente modulo ofrecido tras completar el actual; se limpia al entrar a ese modulo. */
+  offeredNextModuleId?: string;
   updatedAt: string;
 }
 

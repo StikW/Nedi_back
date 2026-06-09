@@ -59,5 +59,5 @@ clasificar intención → sub-agente → respuesta por Evolution. Multi-instruct
 `OPENAI_API_KEY`, `OPENAI_CHAT_MODEL`, `OPENAI_CLASSIFIER_MODEL`, `OPENAI_TRANSCRIBE_MODEL`,
 `OPENAI_VISION_MODEL`, `OPENAI_TTS_MODEL`, `OPENAI_EMBEDDING_MODEL`, `PINECONE_API_KEY`,
 `PINECONE_INDEX=courses`, `EVOLUTION_SERVER_URL`, `EVOLUTION_ADMIN_API_KEY`,
-`AGENT_WEBHOOK_PUBLIC_URL`, `AGENT_BUFFER_SECONDS`. (Ver defaults en `src/core/config/env.config.ts`.)
+`AGENT_WEBHOOK_PUBLIC_URL`, `AGENT_BUFFER_SECONDS`, `AGENT_SESSION_TIMEOUT_MINUTES` (default 20).
 Ejemplo producción: `AGENT_WEBHOOK_PUBLIC_URL=https://tututor.co/api/agent/webhook`

@@ -88,8 +88,21 @@ export class AgentOrchestratorService {
     if (!message.trim()) return;
     const instance = tenant.evolution.instance;
 
-    // Cargar/inicializar estado
+    const sessionTimeoutMin =
+      this.configService.get<number>('AGENT_SESSION_TIMEOUT_MINUTES') ?? 20;
+
     let state = await this.agentState.getState(instance, phoneNumber);
+    const sessionExpired = this.agentState.isSessionExpired(state, sessionTimeoutMin);
+    const welcomeReason = !state
+      ? 'sin sesion previa'
+      : state.lastSessionAt
+        ? 'sesion expirada'
+        : 'sin marca de sesion';
+
+    if (sessionExpired) {
+      this.memory.clear(instance, phoneNumber);
+    }
+
     if (!state) {
       state = await this.agentState.upsertState(instance, phoneNumber, tenant.instructor.id, {
         flujo: 'conversacion',
@@ -106,11 +119,12 @@ export class AgentOrchestratorService {
     };
 
     let reply = '';
-    const isFirstInteraction = ctx.history.length === 0;
 
     try {
-      if (isFirstInteraction) {
-        this.logger.log(`[${instance}] ${phoneNumber} -> AI_ConversacionInicial (primera interaccion)`);
+      if (sessionExpired) {
+        this.logger.log(
+          `[${instance}] ${phoneNumber} -> AI_ConversacionInicial (${welcomeReason}, timeout=${sessionTimeoutMin}m)`,
+        );
         reply = await this.agents.runConversacionInicial(ctx);
       } else {
         const route = await this.agents.classify(ctx);
@@ -143,6 +157,9 @@ export class AgentOrchestratorService {
 
     await this.send(tenant, phoneNumber, reply, recipientJid);
     this.memory.append(instance, phoneNumber, message, reply);
+    state = await this.agentState.upsertState(instance, phoneNumber, tenant.instructor.id, {
+      lastSessionAt: new Date().toISOString(),
+    });
   }
 
   /** Envia la respuesta al estudiante por Evolution. */

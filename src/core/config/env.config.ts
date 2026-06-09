@@ -80,4 +80,8 @@ export default registerAs('env', () => ({
   agentWebhookPublicUrl: process.env.AGENT_WEBHOOK_PUBLIC_URL,
   // Segundos de buffer/debounce de mensajes entrantes
   agentBufferSeconds: process.env.AGENT_BUFFER_SECONDS ? Number(process.env.AGENT_BUFFER_SECONDS) : 5,
+  // Minutos sin actividad antes de reenviar conversacion inicial (n8n: 20 min en Redis)
+  agentSessionTimeoutMinutes: process.env.AGENT_SESSION_TIMEOUT_MINUTES
+    ? Number(process.env.AGENT_SESSION_TIMEOUT_MINUTES)
+    : 20,
 }));

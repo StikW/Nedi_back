@@ -71,11 +71,20 @@ export class AgentsService {
   }
 
   async classify(ctx: RuntimeContext): Promise<IntentRoute> {
+    if (ctx.state.offeredNextModuleId && this.wantsToContinueNextModule(ctx.message)) {
+      return 'AI_Preguntas';
+    }
+
     const context = [
       `Estado de flujo actual: ${ctx.state.flujo}`,
       ctx.state.lastQuestion ? `Última pregunta mostrada: ${ctx.state.lastQuestion}` : 'No hay pregunta activa.',
+      ctx.state.offeredNextModuleId
+        ? 'Se ofreció al estudiante continuar con el siguiente módulo del curso.'
+        : '',
       `Mensaje del estudiante: ${ctx.message}`,
-    ].join('\n');
+    ]
+      .filter(Boolean)
+      .join('\n');
 
     const raw = (await this.llm.complete(CLASSIFIER_PROMPT, context)).trim();
     const normalized = raw.replace(/[^A-Za-z_]/g, '');
@@ -156,7 +165,7 @@ export class AgentsService {
       ctx.tenant.evolution.instance,
       ctx.phoneNumber,
       ctx.tenant.instructor.id,
-      { flujo: 'preguntas', moduleId },
+      { flujo: 'preguntas', moduleId, offeredNextModuleId: undefined },
     );
 
     // sendVideo (n8n): solo al entrar a un modulo nuevo
@@ -180,13 +189,20 @@ export class AgentsService {
         moduleId,
         courseId,
       });
-      await this.agentState.upsertState(
+      const nextModule = await this.questions.resolveCurrentModule(courseId, ctx.phoneNumber);
+      const reply = await this.buildModuleCompletedMessage(moduleId, nextModule);
+      ctx.state = await this.agentState.upsertState(
         ctx.tenant.evolution.instance,
         ctx.phoneNumber,
         ctx.tenant.instructor.id,
-        { flujo: 'conversacion', moduleId: undefined, lastQuestion: undefined },
+        {
+          flujo: 'conversacion',
+          moduleId: undefined,
+          lastQuestion: undefined,
+          offeredNextModuleId: nextModule?.id,
+        },
       );
-      return '¡Felicidades! Has completado este módulo. 🎉';
+      return reply;
     }
 
     if (current.state !== 'question') {
@@ -345,6 +361,34 @@ export class AgentsService {
     } catch (err: any) {
       this.logger.warn(`No se pudo enviar audio-resumen: ${err?.message || err}`);
     }
+  }
+
+  private async buildModuleCompletedMessage(
+    completedModuleId: string,
+    nextModule: CourseModule | null,
+  ): Promise<string> {
+    const completed = await this.courseModuleService.findOne(completedModuleId);
+    const completedTitle = completed?.title || 'este módulo';
+
+    if (!nextModule) {
+      return '¡Felicidades! Has completado todos los módulos disponibles de este curso. 🎉';
+    }
+
+    return [
+      `¡Felicidades! Has completado el módulo *${completedTitle}*. 🎉`,
+      '',
+      `El siguiente módulo es *${nextModule.title}*.`,
+      '¿Quieres continuar con él? Responde *sí* o *siguiente* para empezar.',
+    ].join('\n');
+  }
+
+  /** Afirmaciones tras ofrecer el siguiente módulo (evita depender solo del LLM clasificador). */
+  private wantsToContinueNextModule(message: string): boolean {
+    const t = message.trim().toLowerCase().normalize('NFD').replace(/\p{M}/gu, '');
+    if (/^(si|sí|ok|dale|claro|por supuesto|adelante|continuar|continua|siguiente|empecemos|comencemos|vamos|yes|yep)\b/.test(t)) {
+      return true;
+    }
+    return /\b(siguiente|continuar|empezar|comenzar)\b/.test(t);
   }
 
   private formatQuestion(question: ModuleQuestion, index: number, total: number): string {
