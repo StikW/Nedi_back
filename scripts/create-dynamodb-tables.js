@@ -88,6 +88,18 @@ const tables = [
     ],
   },
   {
+    name: tableName('CourseModuleQuestions'),
+    keySchema: [
+      { AttributeName: 'courseId', KeyType: 'HASH' },
+      { AttributeName: 'moduleId', KeyType: 'RANGE' },
+    ],
+    attributeDefinitions: [
+      { AttributeName: 'courseId', AttributeType: 'S' },
+      { AttributeName: 'moduleId', AttributeType: 'S' },
+    ],
+    globalSecondaryIndexes: [],
+  },
+  {
     name: tableName('CourseModuleProgress'),
     keySchema: [
       { AttributeName: 'courseId', KeyType: 'HASH' },

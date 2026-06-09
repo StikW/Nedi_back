@@ -1,0 +1,413 @@
+﻿{
+    "updatedAt":  "2026-05-12T01:17:51.126Z",
+    "createdAt":  "2026-03-04T19:57:23.674Z",
+    "id":  "ViNJz61mmnAXApoG",
+    "name":  "WF_ObtenerPreguntas",
+    "description":  null,
+    "active":  true,
+    "isArchived":  false,
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "phoneNumber"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "moduleId"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "module"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "course"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "courseId"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "f212bf00-7543-4f23-a197-f21b9ff732f9",
+                      "name":  "When Executed by Another Workflow"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "get",
+                                         "tableName":  "CourseModuleQuestions",
+                                         "keysUi":  {
+                                                        "keyValues":  [
+                                                                          {
+                                                                              "key":  "courseId",
+                                                                              "value":  "={{ $(\u0027When Executed by Another Workflow\u0027).first().json.course || $(\u0027When Executed by Another Workflow\u0027).first().json.courseId }}"
+                                                                          },
+                                                                          {
+                                                                              "key":  "moduleId",
+                                                                              "value":  "={{ $(\u0027When Executed by Another Workflow\u0027).first().json.moduleId || $(\u0027When Executed by Another Workflow\u0027).first().json.module }}"
+                                                                          }
+                                                                      ]
+                                                    },
+                                         "additionalFields":  {
+
+                                                              }
+                                     },
+                      "type":  "n8n-nodes-base.awsDynamoDb",
+                      "typeVersion":  1,
+                      "position":  [
+                                       208,
+                                       0
+                                   ],
+                      "id":  "1e92e6fb-8657-44bf-b407-6b01c9bafdee",
+                      "name":  "Get CourseModuleQuestions",
+                      "alwaysOutputData":  true,
+                      "credentials":  {
+                                          "aws":  {
+                                                      "id":  "neB7cpA9MnnEEp5g",
+                                                      "name":  "AWS (IAM) Prod"
+                                                  }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "c74cb23d-402b-4999-a364-b1369a6c5559",
+                                                                                     "name":  "questions",
+                                                                                     "value":  "={{ (() =\u003e { const bank = $(\u0027Get CourseModuleQuestions\u0027).first()?.json; const prog = $(\u0027Get Progress\u0027).first()?.json; const parseStatus = (s) =\u003e { if (s == null || s === \u0027\u0027) return 0; if (typeof s === \u0027number\u0027 \u0026\u0026 !Number.isNaN(s)) return s; const n = Number(s); if (!Number.isNaN(n)) return n; const m = String(s).match(/pregunta\\s*(\\d+)/i); if (m) return Math.max(0, parseInt(m[1], 10) - 1); return 0; }; if (!bank?.questions) return null; let arr; try { arr = typeof bank.questions === \u0027string\u0027 ? JSON.parse(bank.questions) : bank.questions; } catch { return null; } if (!Array.isArray(arr) || arr.length === 0) return null; const idx = parseStatus(prog?.status); const q = arr[idx]; if (q === undefined) return \u0027¡Modulo finalizado!\u0027; return typeof q === \u0027string\u0027 ? q : JSON.stringify(q); })() }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       416,
+                                       0
+                                   ],
+                      "id":  "d29fe972-791f-40b9-ba1c-1a3c0aff0861",
+                      "name":  "Edit Fields"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "get",
+                                         "tableName":  "Progress",
+                                         "keysUi":  {
+                                                        "keyValues":  [
+                                                                          {
+                                                                              "key":  "phoneNumber",
+                                                                              "value":  "=wa{{ $(\u0027When Executed by Another Workflow\u0027).first().json.phoneNumber }}"
+                                                                          },
+                                                                          {
+                                                                              "key":  "moduleId",
+                                                                              "value":  "={{ $(\u0027When Executed by Another Workflow\u0027).first().json.moduleId || $(\u0027When Executed by Another Workflow\u0027).first().json.module }}"
+                                                                          }
+                                                                      ]
+                                                    },
+                                         "additionalFields":  {
+
+                                                              }
+                                     },
+                      "id":  "c4a8e12b-9f33-4d1a-b8e6-1a2d3f4c5b67",
+                      "name":  "Get Progress",
+                      "type":  "n8n-nodes-base.awsDynamoDb",
+                      "typeVersion":  1,
+                      "position":  [
+                                       320,
+                                       0
+                                   ],
+                      "alwaysOutputData":  true,
+                      "credentials":  {
+                                          "aws":  {
+                                                      "id":  "neB7cpA9MnnEEp5g",
+                                                      "name":  "AWS (IAM) Prod"
+                                                  }
+                                      }
+                  }
+              ],
+    "connections":  {
+                        "When Executed by Another Workflow":  {
+                                                                  "main":  [
+                                                                               [
+                                                                                   {
+                                                                                       "node":  "Get CourseModuleQuestions",
+                                                                                       "type":  "main",
+                                                                                       "index":  0
+                                                                                   }
+                                                                               ]
+                                                                           ]
+                                                              },
+                        "Get CourseModuleQuestions":  {
+                                                          "main":  [
+                                                                       [
+                                                                           {
+                                                                               "node":  "Get Progress",
+                                                                               "type":  "main",
+                                                                               "index":  0
+                                                                           }
+                                                                       ]
+                                                                   ]
+                                                      },
+                        "Get Progress":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "node":  "Edit Fields",
+                                                                  "type":  "main",
+                                                                  "index":  0
+                                                              }
+                                                          ]
+                                                      ]
+                                         }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "binaryMode":  "separate",
+                     "availableInMCP":  false,
+                     "callerPolicy":  "workflowsFromSameOwner"
+                 },
+    "staticData":  null,
+    "meta":  {
+                 "templateCredsSetupCompleted":  true
+             },
+    "pinData":  {
+                    "When Executed by Another Workflow":  [
+                                                              {
+                                                                  "json":  {
+                                                                               "phoneNumber":  "573147311511",
+                                                                               "moduleId":  "03c04cd3-26f2-401b-a2a5-ed9cc6e0d17f"
+                                                                           }
+                                                              }
+                                                          ]
+                },
+    "versionId":  "3f68ad6e-2d3e-4cdc-8c77-737b20f310f1",
+    "activeVersionId":  "3f68ad6e-2d3e-4cdc-8c77-737b20f310f1",
+    "versionCounter":  54,
+    "triggerCount":  0,
+    "shared":  [
+                   {
+                       "updatedAt":  "2026-03-04T19:57:23.677Z",
+                       "createdAt":  "2026-03-04T19:57:23.677Z",
+                       "role":  "workflow:owner",
+                       "workflowId":  "ViNJz61mmnAXApoG",
+                       "projectId":  "D2B8jYcj2oWbWNjW",
+                       "project":  {
+                                       "updatedAt":  "2026-03-03T21:30:49.196Z",
+                                       "createdAt":  "2026-02-27T23:26:57.527Z",
+                                       "id":  "D2B8jYcj2oWbWNjW",
+                                       "name":  "Hao Tech \u003cgrupohaosas@gmail.com\u003e",
+                                       "type":  "personal",
+                                       "icon":  null,
+                                       "description":  null,
+                                       "creatorId":  "36112817-d7c5-4bcc-b4f6-e76b96ea308e"
+                                   }
+                   }
+               ],
+    "tags":  [
+
+             ],
+    "activeVersion":  {
+                          "updatedAt":  "2026-05-12T01:17:51.131Z",
+                          "createdAt":  "2026-05-12T01:17:51.131Z",
+                          "versionId":  "3f68ad6e-2d3e-4cdc-8c77-737b20f310f1",
+                          "workflowId":  "ViNJz61mmnAXApoG",
+                          "nodes":  [
+                                        {
+                                            "parameters":  {
+                                                               "workflowInputs":  {
+                                                                                      "values":  [
+                                                                                                     {
+                                                                                                         "name":  "phoneNumber"
+                                                                                                     },
+                                                                                                     {
+                                                                                                         "name":  "moduleId"
+                                                                                                     },
+                                                                                                     {
+                                                                                                         "name":  "module"
+                                                                                                     },
+                                                                                                     {
+                                                                                                         "name":  "course"
+                                                                                                     },
+                                                                                                     {
+                                                                                                         "name":  "courseId"
+                                                                                                     }
+                                                                                                 ]
+                                                                                  }
+                                                           },
+                                            "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                                            "typeVersion":  1.1,
+                                            "position":  [
+                                                             0,
+                                                             0
+                                                         ],
+                                            "id":  "f212bf00-7543-4f23-a197-f21b9ff732f9",
+                                            "name":  "When Executed by Another Workflow"
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "operation":  "get",
+                                                               "tableName":  "CourseModuleQuestions",
+                                                               "keysUi":  {
+                                                                              "keyValues":  [
+                                                                                                {
+                                                                                                    "key":  "courseId",
+                                                                                                    "value":  "={{ $(\u0027When Executed by Another Workflow\u0027).first().json.course || $(\u0027When Executed by Another Workflow\u0027).first().json.courseId }}"
+                                                                                                },
+                                                                                                {
+                                                                                                    "key":  "moduleId",
+                                                                                                    "value":  "={{ $(\u0027When Executed by Another Workflow\u0027).first().json.moduleId || $(\u0027When Executed by Another Workflow\u0027).first().json.module }}"
+                                                                                                }
+                                                                                            ]
+                                                                          },
+                                                               "additionalFields":  {
+
+                                                                                    }
+                                                           },
+                                            "type":  "n8n-nodes-base.awsDynamoDb",
+                                            "typeVersion":  1,
+                                            "position":  [
+                                                             208,
+                                                             0
+                                                         ],
+                                            "id":  "1e92e6fb-8657-44bf-b407-6b01c9bafdee",
+                                            "name":  "Get CourseModuleQuestions",
+                                            "alwaysOutputData":  true,
+                                            "credentials":  {
+                                                                "aws":  {
+                                                                            "id":  "neB7cpA9MnnEEp5g",
+                                                                            "name":  "AWS (IAM) Prod"
+                                                                        }
+                                                            }
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "assignments":  {
+                                                                                   "assignments":  [
+                                                                                                       {
+                                                                                                           "id":  "c74cb23d-402b-4999-a364-b1369a6c5559",
+                                                                                                           "name":  "questions",
+                                                                                                           "value":  "={{ (() =\u003e { const bank = $(\u0027Get CourseModuleQuestions\u0027).first()?.json; const prog = $(\u0027Get Progress\u0027).first()?.json; const parseStatus = (s) =\u003e { if (s == null || s === \u0027\u0027) return 0; if (typeof s === \u0027number\u0027 \u0026\u0026 !Number.isNaN(s)) return s; const n = Number(s); if (!Number.isNaN(n)) return n; const m = String(s).match(/pregunta\\s*(\\d+)/i); if (m) return Math.max(0, parseInt(m[1], 10) - 1); return 0; }; if (!bank?.questions) return null; let arr; try { arr = typeof bank.questions === \u0027string\u0027 ? JSON.parse(bank.questions) : bank.questions; } catch { return null; } if (!Array.isArray(arr) || arr.length === 0) return null; const idx = parseStatus(prog?.status); const q = arr[idx]; if (q === undefined) return \u0027¡Modulo finalizado!\u0027; return typeof q === \u0027string\u0027 ? q : JSON.stringify(q); })() }}",
+                                                                                                           "type":  "string"
+                                                                                                       }
+                                                                                                   ]
+                                                                               },
+                                                               "options":  {
+
+                                                                           }
+                                                           },
+                                            "type":  "n8n-nodes-base.set",
+                                            "typeVersion":  3.4,
+                                            "position":  [
+                                                             416,
+                                                             0
+                                                         ],
+                                            "id":  "d29fe972-791f-40b9-ba1c-1a3c0aff0861",
+                                            "name":  "Edit Fields"
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "operation":  "get",
+                                                               "tableName":  "Progress",
+                                                               "keysUi":  {
+                                                                              "keyValues":  [
+                                                                                                {
+                                                                                                    "key":  "phoneNumber",
+                                                                                                    "value":  "=wa{{ $(\u0027When Executed by Another Workflow\u0027).first().json.phoneNumber }}"
+                                                                                                },
+                                                                                                {
+                                                                                                    "key":  "moduleId",
+                                                                                                    "value":  "={{ $(\u0027When Executed by Another Workflow\u0027).first().json.moduleId || $(\u0027When Executed by Another Workflow\u0027).first().json.module }}"
+                                                                                                }
+                                                                                            ]
+                                                                          },
+                                                               "additionalFields":  {
+
+                                                                                    }
+                                                           },
+                                            "id":  "c4a8e12b-9f33-4d1a-b8e6-1a2d3f4c5b67",
+                                            "name":  "Get Progress",
+                                            "type":  "n8n-nodes-base.awsDynamoDb",
+                                            "typeVersion":  1,
+                                            "position":  [
+                                                             320,
+                                                             0
+                                                         ],
+                                            "alwaysOutputData":  true,
+                                            "credentials":  {
+                                                                "aws":  {
+                                                                            "id":  "neB7cpA9MnnEEp5g",
+                                                                            "name":  "AWS (IAM) Prod"
+                                                                        }
+                                                            }
+                                        }
+                                    ],
+                          "connections":  {
+                                              "When Executed by Another Workflow":  {
+                                                                                        "main":  [
+                                                                                                     [
+                                                                                                         {
+                                                                                                             "node":  "Get CourseModuleQuestions",
+                                                                                                             "type":  "main",
+                                                                                                             "index":  0
+                                                                                                         }
+                                                                                                     ]
+                                                                                                 ]
+                                                                                    },
+                                              "Get CourseModuleQuestions":  {
+                                                                                "main":  [
+                                                                                             [
+                                                                                                 {
+                                                                                                     "node":  "Get Progress",
+                                                                                                     "type":  "main",
+                                                                                                     "index":  0
+                                                                                                 }
+                                                                                             ]
+                                                                                         ]
+                                                                            },
+                                              "Get Progress":  {
+                                                                   "main":  [
+                                                                                [
+                                                                                    {
+                                                                                        "node":  "Edit Fields",
+                                                                                        "type":  "main",
+                                                                                        "index":  0
+                                                                                    }
+                                                                                ]
+                                                                            ]
+                                                               }
+                                          },
+                          "authors":  "Hao Tech",
+                          "name":  null,
+                          "description":  null,
+                          "autosaved":  false,
+                          "workflowPublishHistory":  [
+                                                         {
+                                                             "createdAt":  "2026-05-12T01:17:51.212Z",
+                                                             "id":  279,
+                                                             "workflowId":  "ViNJz61mmnAXApoG",
+                                                             "versionId":  "3f68ad6e-2d3e-4cdc-8c77-737b20f310f1",
+                                                             "event":  "activated",
+                                                             "userId":  "36112817-d7c5-4bcc-b4f6-e76b96ea308e"
+                                                         },
+                                                         {
+                                                             "createdAt":  "2026-05-12T01:17:51.196Z",
+                                                             "id":  278,
+                                                             "workflowId":  "ViNJz61mmnAXApoG",
+                                                             "versionId":  "3f68ad6e-2d3e-4cdc-8c77-737b20f310f1",
+                                                             "event":  "deactivated",
+                                                             "userId":  "36112817-d7c5-4bcc-b4f6-e76b96ea308e"
+                                                         }
+                                                     ]
+                      }
+}

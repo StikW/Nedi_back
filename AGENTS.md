@@ -43,8 +43,8 @@ clasificar intención → sub-agente → respuesta por Evolution. Multi-instruct
 
 ## Datos (DynamoDB)
 - Estado conversacional del agente: tabla `AgentState` (clave `id = "${instance}#${phone}"`).
-- Banco de preguntas: `CourseModuleProgress` (clave `courseId+moduleId`).
-- Avance del estudiante por módulo: `Progress` (clave `phoneNumber+moduleId`).
+- Banco de preguntas: `CourseModuleQuestions` (clave `courseId+moduleId`; fallback lectura `CourseModuleProgress`).
+- Avance del estudiante por módulo: `Progress` (clave `wa{phoneNumber}+moduleId`, campo `status`).
 - Módulos completados (API): `ModuleProgress`. Otras: `Users`, `Courses`, `CourseModules`, `Students`.
 - Config Evolution del instructor vive en la entidad `User` (`evolutionInstance/ApiKey/Number/Status`).
 

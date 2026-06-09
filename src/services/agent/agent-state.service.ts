@@ -9,7 +9,10 @@ import { AgentState, AGENT_STATE_TABLE } from '../../models/agent-state.entity';
 import {
   CourseModuleQuestions,
   COURSE_MODULE_QUESTIONS_TABLE,
+  LEGACY_QUESTION_BANK_TABLE,
   ModuleQuestion,
+  parseProgressStatus,
+  progressPhoneKey,
   StudentQuestionProgress,
   STUDENT_PROGRESS_TABLE,
 } from '../../models/course-module-questions.entity';
@@ -82,10 +85,17 @@ export class AgentStateService {
   // ===== Banco de preguntas =====
 
   async getQuestionBank(courseId: string, moduleId: string): Promise<ModuleQuestion[] | null> {
-    const res = await this.dynamoClient.send(
-      new GetCommand({ TableName: COURSE_MODULE_QUESTIONS_TABLE, Key: { courseId, moduleId } }),
-    );
-    const item = res.Item as CourseModuleQuestions | undefined;
+    for (const tableName of [COURSE_MODULE_QUESTIONS_TABLE, LEGACY_QUESTION_BANK_TABLE]) {
+      const res = await this.dynamoClient.send(
+        new GetCommand({ TableName: tableName, Key: { courseId, moduleId } }),
+      );
+      const parsed = this.parseQuestionBankItem(res.Item as CourseModuleQuestions | undefined);
+      if (parsed) return parsed;
+    }
+    return null;
+  }
+
+  private parseQuestionBankItem(item?: CourseModuleQuestions): ModuleQuestion[] | null {
     if (!item?.questions) return null;
     try {
       const arr = typeof item.questions === 'string' ? JSON.parse(item.questions) : item.questions;
@@ -105,41 +115,61 @@ export class AgentStateService {
     await this.dynamoClient.send(new PutCommand({ TableName: COURSE_MODULE_QUESTIONS_TABLE, Item: item }));
   }
 
-  // ===== Avance de preguntas del estudiante =====
+  // ===== Avance de preguntas del estudiante (tabla Progress, formato n8n) =====
 
   async getQuestionNumber(phoneNumber: string, moduleId: string): Promise<number> {
-    const res = await this.dynamoClient.send(
-      new GetCommand({ TableName: STUDENT_PROGRESS_TABLE, Key: { phoneNumber, moduleId } }),
-    );
-    const item = res.Item as StudentQuestionProgress | undefined;
-    const n = item?.questionNumber;
-    return typeof n === 'number' && !Number.isNaN(n) ? n : 0;
+    const item = await this.getProgressItem(phoneNumber, moduleId);
+    if (!item) return 0;
+    if (item.status != null) {
+      return parseProgressStatus(item.status);
+    }
+    return parseProgressStatus(item.questionNumber);
   }
 
-  async setQuestionNumber(
+  async advanceQuestion(phoneNumber: string, moduleId: string, courseId?: string): Promise<number> {
+    const item = await this.getProgressItem(phoneNumber, moduleId);
+    const raw = item?.status ?? item?.questionNumber;
+    const nextStatus = Number.isFinite(Number(raw)) ? Number(raw) + 1 : 1;
+    await this.setProgressStatus(phoneNumber, moduleId, nextStatus, courseId);
+    return nextStatus;
+  }
+
+  private async getProgressItem(
     phoneNumber: string,
     moduleId: string,
-    questionNumber: number,
+  ): Promise<StudentQuestionProgress | null> {
+    const keys = [...new Set([progressPhoneKey(phoneNumber), phoneNumber.trim()])];
+    for (const key of keys) {
+      const res = await this.dynamoClient.send(
+        new GetCommand({
+          TableName: STUDENT_PROGRESS_TABLE,
+          Key: { phoneNumber: key, moduleId },
+        }),
+      );
+      if (res.Item) return res.Item as StudentQuestionProgress;
+    }
+    return null;
+  }
+
+  private async setProgressStatus(
+    phoneNumber: string,
+    moduleId: string,
+    status: number,
     courseId?: string,
   ): Promise<void> {
+    const key = progressPhoneKey(phoneNumber);
     await this.dynamoClient.send(
       new UpdateCommand({
         TableName: STUDENT_PROGRESS_TABLE,
-        Key: { phoneNumber, moduleId },
-        UpdateExpression: 'SET questionNumber = :n, courseId = :c, updatedAt = :u',
+        Key: { phoneNumber: key, moduleId },
+        UpdateExpression: 'SET #status = :s, courseId = :c, updatedAt = :u',
+        ExpressionAttributeNames: { '#status': 'status' },
         ExpressionAttributeValues: {
-          ':n': questionNumber,
+          ':s': status,
           ':c': courseId ?? null,
           ':u': new Date().toISOString(),
         },
       }),
     );
-  }
-
-  async advanceQuestion(phoneNumber: string, moduleId: string, courseId?: string): Promise<number> {
-    const current = await this.getQuestionNumber(phoneNumber, moduleId);
-    const next = current + 1;
-    await this.setQuestionNumber(phoneNumber, moduleId, next, courseId);
-    return next;
   }
 }

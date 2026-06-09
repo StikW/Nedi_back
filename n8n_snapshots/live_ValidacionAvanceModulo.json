@@ -1,0 +1,718 @@
+﻿{
+    "updatedAt":  "2026-05-08T22:32:26.071Z",
+    "createdAt":  "2026-03-04T20:00:37.470Z",
+    "id":  "Raf39Xrh1R9YiQo0",
+    "name":  "Validación de avance modulo",
+    "description":  null,
+    "active":  true,
+    "isArchived":  false,
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "operation":  "getAll",
+                                         "tableName":  "CourseModules",
+                                         "keyConditionExpression":  "courseId = :courseIdVal",
+                                         "eavUi":  {
+                                                       "eavValues":  [
+                                                                         {
+                                                                             "attribute":  "courseIdVal",
+                                                                             "value":  "={{ $json.courseId }}"
+                                                                         }
+                                                                     ]
+                                                   },
+                                         "select":  "SPECIFIC_ATTRIBUTES",
+                                         "options":  {
+                                                         "indexName":  "courseId-order-index",
+                                                         "projectionExpression":  "id"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.awsDynamoDb",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -688,
+                                       32
+                                   ],
+                      "id":  "09f0022d-7c82-467d-96e2-5e94b7b7ec95",
+                      "name":  "Get many items",
+                      "alwaysOutputData":  true,
+                      "credentials":  {
+                                          "aws":  {
+                                                      "id":  "neB7cpA9MnnEEp5g",
+                                                      "name":  "AWS (IAM) Prod"
+                                                  }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "phoneNumber"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "courseId"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       -880,
+                                       32
+                                   ],
+                      "id":  "daa79d94-daf3-487d-a8c5-f2385dac3ba9",
+                      "name":  "When Executed by Another Workflow"
+                  },
+                  {
+                      "parameters":  {
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.splitInBatches",
+                      "typeVersion":  3,
+                      "position":  [
+                                       -432,
+                                       32
+                                   ],
+                      "id":  "3ef28447-b717-42f8-a858-04a03dae5e85",
+                      "name":  "Loop Over Items"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "leftValue":  "",
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "5e597972-6c6b-4556-ba45-07aad2e57b1a",
+                                                                                   "leftValue":  "={{ $json.id }}",
+                                                                                   "rightValue":  "",
+                                                                                   "operator":  {
+                                                                                                    "type":  "string",
+                                                                                                    "operation":  "exists",
+                                                                                                    "singleValue":  true
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -288,
+                                       112
+                                   ],
+                      "id":  "ffa5f485-6d6a-4b2f-9fc4-ff25bade76dd",
+                      "name":  "If"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "get",
+                                         "tableName":  "ModuleProgress",
+                                         "simple":  false,
+                                         "keysUi":  {
+                                                        "keyValues":  [
+                                                                          {
+                                                                              "key":  "id",
+                                                                              "value":  "={{ $(\u0027When Executed by Another Workflow\u0027).item.json.phoneNumber }}#{{ $json.id }}"
+                                                                          }
+                                                                      ]
+                                                    },
+                                         "additionalFields":  {
+
+                                                              }
+                                     },
+                      "type":  "n8n-nodes-base.awsDynamoDb",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -64,
+                                       192
+                                   ],
+                      "id":  "1e5e54a5-190c-4f0b-8666-8c289455c464",
+                      "name":  "Get an item",
+                      "alwaysOutputData":  false,
+                      "credentials":  {
+                                          "aws":  {
+                                                      "id":  "neB7cpA9MnnEEp5g",
+                                                      "name":  "AWS (IAM) Prod"
+                                                  }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "mode":  "combineBySql",
+                                         "query":  "SELECT *\nFROM input1\nWHERE id NOT IN (SELECT (moduleId).S FROM input2);\n",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.merge",
+                      "typeVersion":  3.2,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "6bb6d9c8-94c5-47aa-b5cf-0c3f2353f75e",
+                      "name":  "Merge",
+                      "alwaysOutputData":  true
+                  },
+                  {
+                      "parameters":  {
+                                         "fieldsToAggregate":  {
+                                                                   "fieldToAggregate":  [
+                                                                                            {
+                                                                                                "fieldToAggregate":  "id"
+                                                                                            }
+                                                                                        ]
+                                                               },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.aggregate",
+                      "typeVersion":  1,
+                      "position":  [
+                                       208,
+                                       0
+                                   ],
+                      "id":  "5e1ace32-c6b9-422e-b78a-f0df9b286683",
+                      "name":  "modules"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "b460b531-cfa8-4d3a-8f83-1dc3c9447bb7",
+                                                                                     "name":  "modules",
+                                                                                     "value":  "={{ [$json.id[0]] || [] }}",
+                                                                                     "type":  "array"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       496,
+                                       0
+                                   ],
+                      "id":  "5eb7f2e6-e35b-43e4-aeda-c5f9860a5aaf",
+                      "name":  "Edit Fields"
+                  }
+              ],
+    "connections":  {
+                        "Get many items":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "node":  "Loop Over Items",
+                                                                    "type":  "main",
+                                                                    "index":  0
+                                                                },
+                                                                {
+                                                                    "node":  "Merge",
+                                                                    "type":  "main",
+                                                                    "index":  0
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "When Executed by Another Workflow":  {
+                                                                  "main":  [
+                                                                               [
+                                                                                   {
+                                                                                       "node":  "Get many items",
+                                                                                       "type":  "main",
+                                                                                       "index":  0
+                                                                                   }
+                                                                               ]
+                                                                           ]
+                                                              },
+                        "Loop Over Items":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "node":  "Merge",
+                                                                     "type":  "main",
+                                                                     "index":  1
+                                                                 }
+                                                             ],
+                                                             [
+                                                                 {
+                                                                     "node":  "If",
+                                                                     "type":  "main",
+                                                                     "index":  0
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "If":  {
+                                   "main":  [
+                                                [
+                                                    {
+                                                        "node":  "Get an item",
+                                                        "type":  "main",
+                                                        "index":  0
+                                                    }
+                                                ],
+                                                [
+                                                    {
+                                                        "node":  "Loop Over Items",
+                                                        "type":  "main",
+                                                        "index":  0
+                                                    }
+                                                ]
+                                            ]
+                               },
+                        "Get an item":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "node":  "Loop Over Items",
+                                                                 "type":  "main",
+                                                                 "index":  0
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Merge":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "node":  "modules",
+                                                           "type":  "main",
+                                                           "index":  0
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "modules":  {
+                                        "main":  [
+                                                     [
+                                                         {
+                                                             "node":  "Edit Fields",
+                                                             "type":  "main",
+                                                             "index":  0
+                                                         }
+                                                     ]
+                                                 ]
+                                    }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "binaryMode":  "separate",
+                     "availableInMCP":  false
+                 },
+    "staticData":  null,
+    "meta":  {
+                 "templateCredsSetupCompleted":  true
+             },
+    "pinData":  {
+                    "When Executed by Another Workflow":  [
+                                                              {
+                                                                  "json":  {
+                                                                               "phoneNumber":  "573147311511",
+                                                                               "courseId":  "3cb61fda-9b6c-4f59-a315-1e3483e8136b"
+                                                                           }
+                                                              }
+                                                          ]
+                },
+    "versionId":  "27285179-3fed-44f1-8e8a-187f2e248b29",
+    "activeVersionId":  "4be78df4-3161-4e9e-a2e6-e86940b250e2",
+    "versionCounter":  22,
+    "triggerCount":  0,
+    "shared":  [
+                   {
+                       "updatedAt":  "2026-03-04T20:00:37.472Z",
+                       "createdAt":  "2026-03-04T20:00:37.472Z",
+                       "role":  "workflow:owner",
+                       "workflowId":  "Raf39Xrh1R9YiQo0",
+                       "projectId":  "D2B8jYcj2oWbWNjW",
+                       "project":  {
+                                       "updatedAt":  "2026-03-03T21:30:49.196Z",
+                                       "createdAt":  "2026-02-27T23:26:57.527Z",
+                                       "id":  "D2B8jYcj2oWbWNjW",
+                                       "name":  "Hao Tech \u003cgrupohaosas@gmail.com\u003e",
+                                       "type":  "personal",
+                                       "icon":  null,
+                                       "description":  null,
+                                       "creatorId":  "36112817-d7c5-4bcc-b4f6-e76b96ea308e"
+                                   }
+                   }
+               ],
+    "tags":  [
+
+             ],
+    "activeVersion":  {
+                          "updatedAt":  "2026-03-18T18:42:47.000Z",
+                          "createdAt":  "2026-03-15T18:57:52.862Z",
+                          "versionId":  "4be78df4-3161-4e9e-a2e6-e86940b250e2",
+                          "workflowId":  "Raf39Xrh1R9YiQo0",
+                          "nodes":  [
+                                        {
+                                            "parameters":  {
+                                                               "operation":  "getAll",
+                                                               "tableName":  "CourseModules",
+                                                               "keyConditionExpression":  "courseId = :courseIdVal",
+                                                               "eavUi":  {
+                                                                             "eavValues":  [
+                                                                                               {
+                                                                                                   "attribute":  "courseIdVal",
+                                                                                                   "value":  "={{ $json.courseId }}"
+                                                                                               }
+                                                                                           ]
+                                                                         },
+                                                               "select":  "SPECIFIC_ATTRIBUTES",
+                                                               "options":  {
+                                                                               "indexName":  "courseId-order-index",
+                                                                               "projectionExpression":  "id"
+                                                                           }
+                                                           },
+                                            "type":  "n8n-nodes-base.awsDynamoDb",
+                                            "typeVersion":  1,
+                                            "position":  [
+                                                             -688,
+                                                             32
+                                                         ],
+                                            "id":  "09f0022d-7c82-467d-96e2-5e94b7b7ec95",
+                                            "name":  "Get many items",
+                                            "alwaysOutputData":  true,
+                                            "credentials":  {
+                                                                "aws":  {
+                                                                            "id":  "neB7cpA9MnnEEp5g",
+                                                                            "name":  "AWS (IAM) account"
+                                                                        }
+                                                            }
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "workflowInputs":  {
+                                                                                      "values":  [
+                                                                                                     {
+                                                                                                         "name":  "phoneNumber"
+                                                                                                     },
+                                                                                                     {
+                                                                                                         "name":  "courseId"
+                                                                                                     }
+                                                                                                 ]
+                                                                                  }
+                                                           },
+                                            "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                                            "typeVersion":  1.1,
+                                            "position":  [
+                                                             -880,
+                                                             32
+                                                         ],
+                                            "id":  "daa79d94-daf3-487d-a8c5-f2385dac3ba9",
+                                            "name":  "When Executed by Another Workflow"
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "options":  {
+
+                                                                           }
+                                                           },
+                                            "type":  "n8n-nodes-base.splitInBatches",
+                                            "typeVersion":  3,
+                                            "position":  [
+                                                             -432,
+                                                             32
+                                                         ],
+                                            "id":  "3ef28447-b717-42f8-a858-04a03dae5e85",
+                                            "name":  "Loop Over Items"
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "conditions":  {
+                                                                                  "options":  {
+                                                                                                  "caseSensitive":  true,
+                                                                                                  "leftValue":  "",
+                                                                                                  "typeValidation":  "strict",
+                                                                                                  "version":  2
+                                                                                              },
+                                                                                  "conditions":  [
+                                                                                                     {
+                                                                                                         "id":  "5e597972-6c6b-4556-ba45-07aad2e57b1a",
+                                                                                                         "leftValue":  "={{ $json.id }}",
+                                                                                                         "rightValue":  "",
+                                                                                                         "operator":  {
+                                                                                                                          "type":  "string",
+                                                                                                                          "operation":  "exists",
+                                                                                                                          "singleValue":  true
+                                                                                                                      }
+                                                                                                     }
+                                                                                                 ],
+                                                                                  "combinator":  "and"
+                                                                              },
+                                                               "options":  {
+
+                                                                           }
+                                                           },
+                                            "type":  "n8n-nodes-base.if",
+                                            "typeVersion":  2.2,
+                                            "position":  [
+                                                             -288,
+                                                             112
+                                                         ],
+                                            "id":  "ffa5f485-6d6a-4b2f-9fc4-ff25bade76dd",
+                                            "name":  "If"
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "operation":  "get",
+                                                               "tableName":  "ModuleProgress",
+                                                               "simple":  false,
+                                                               "keysUi":  {
+                                                                              "keyValues":  [
+                                                                                                {
+                                                                                                    "key":  "id",
+                                                                                                    "value":  "={{ $(\u0027When Executed by Another Workflow\u0027).item.json.phoneNumber }}#{{ $json.id }}"
+                                                                                                }
+                                                                                            ]
+                                                                          },
+                                                               "additionalFields":  {
+
+                                                                                    }
+                                                           },
+                                            "type":  "n8n-nodes-base.awsDynamoDb",
+                                            "typeVersion":  1,
+                                            "position":  [
+                                                             -64,
+                                                             192
+                                                         ],
+                                            "id":  "1e5e54a5-190c-4f0b-8666-8c289455c464",
+                                            "name":  "Get an item",
+                                            "alwaysOutputData":  false,
+                                            "credentials":  {
+                                                                "aws":  {
+                                                                            "id":  "neB7cpA9MnnEEp5g",
+                                                                            "name":  "AWS (IAM) account"
+                                                                        }
+                                                            }
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "mode":  "combineBySql",
+                                                               "query":  "SELECT *\nFROM input1\nWHERE id NOT IN (SELECT (moduleId).S FROM input2);\n",
+                                                               "options":  {
+
+                                                                           }
+                                                           },
+                                            "type":  "n8n-nodes-base.merge",
+                                            "typeVersion":  3.2,
+                                            "position":  [
+                                                             0,
+                                                             0
+                                                         ],
+                                            "id":  "6bb6d9c8-94c5-47aa-b5cf-0c3f2353f75e",
+                                            "name":  "Merge",
+                                            "alwaysOutputData":  true
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "fieldsToAggregate":  {
+                                                                                         "fieldToAggregate":  [
+                                                                                                                  {
+                                                                                                                      "fieldToAggregate":  "id"
+                                                                                                                  }
+                                                                                                              ]
+                                                                                     },
+                                                               "options":  {
+
+                                                                           }
+                                                           },
+                                            "type":  "n8n-nodes-base.aggregate",
+                                            "typeVersion":  1,
+                                            "position":  [
+                                                             208,
+                                                             0
+                                                         ],
+                                            "id":  "5e1ace32-c6b9-422e-b78a-f0df9b286683",
+                                            "name":  "modules"
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "assignments":  {
+                                                                                   "assignments":  [
+                                                                                                       {
+                                                                                                           "id":  "b460b531-cfa8-4d3a-8f83-1dc3c9447bb7",
+                                                                                                           "name":  "modules",
+                                                                                                           "value":  "={{ [$json.id[0]] || [] }}",
+                                                                                                           "type":  "array"
+                                                                                                       }
+                                                                                                   ]
+                                                                               },
+                                                               "options":  {
+
+                                                                           }
+                                                           },
+                                            "type":  "n8n-nodes-base.set",
+                                            "typeVersion":  3.4,
+                                            "position":  [
+                                                             496,
+                                                             0
+                                                         ],
+                                            "id":  "5eb7f2e6-e35b-43e4-aeda-c5f9860a5aaf",
+                                            "name":  "Edit Fields"
+                                        }
+                                    ],
+                          "connections":  {
+                                              "Get many items":  {
+                                                                     "main":  [
+                                                                                  [
+                                                                                      {
+                                                                                          "node":  "Loop Over Items",
+                                                                                          "type":  "main",
+                                                                                          "index":  0
+                                                                                      },
+                                                                                      {
+                                                                                          "node":  "Merge",
+                                                                                          "type":  "main",
+                                                                                          "index":  0
+                                                                                      }
+                                                                                  ]
+                                                                              ]
+                                                                 },
+                                              "When Executed by Another Workflow":  {
+                                                                                        "main":  [
+                                                                                                     [
+                                                                                                         {
+                                                                                                             "node":  "Get many items",
+                                                                                                             "type":  "main",
+                                                                                                             "index":  0
+                                                                                                         }
+                                                                                                     ]
+                                                                                                 ]
+                                                                                    },
+                                              "Loop Over Items":  {
+                                                                      "main":  [
+                                                                                   [
+                                                                                       {
+                                                                                           "node":  "Merge",
+                                                                                           "type":  "main",
+                                                                                           "index":  1
+                                                                                       }
+                                                                                   ],
+                                                                                   [
+                                                                                       {
+                                                                                           "node":  "If",
+                                                                                           "type":  "main",
+                                                                                           "index":  0
+                                                                                       }
+                                                                                   ]
+                                                                               ]
+                                                                  },
+                                              "If":  {
+                                                         "main":  [
+                                                                      [
+                                                                          {
+                                                                              "node":  "Get an item",
+                                                                              "type":  "main",
+                                                                              "index":  0
+                                                                          }
+                                                                      ],
+                                                                      [
+                                                                          {
+                                                                              "node":  "Loop Over Items",
+                                                                              "type":  "main",
+                                                                              "index":  0
+                                                                          }
+                                                                      ]
+                                                                  ]
+                                                     },
+                                              "Get an item":  {
+                                                                  "main":  [
+                                                                               [
+                                                                                   {
+                                                                                       "node":  "Loop Over Items",
+                                                                                       "type":  "main",
+                                                                                       "index":  0
+                                                                                   }
+                                                                               ]
+                                                                           ]
+                                                              },
+                                              "Merge":  {
+                                                            "main":  [
+                                                                         [
+                                                                             {
+                                                                                 "node":  "modules",
+                                                                                 "type":  "main",
+                                                                                 "index":  0
+                                                                             }
+                                                                         ]
+                                                                     ]
+                                                        },
+                                              "modules":  {
+                                                              "main":  [
+                                                                           [
+                                                                               {
+                                                                                   "node":  "Edit Fields",
+                                                                                   "type":  "main",
+                                                                                   "index":  0
+                                                                               }
+                                                                           ]
+                                                                       ]
+                                                          }
+                                          },
+                          "authors":  "Hao Tech",
+                          "name":  "Version 4be78df4",
+                          "description":  "",
+                          "autosaved":  true,
+                          "workflowPublishHistory":  [
+                                                         {
+                                                             "createdAt":  "2026-03-15T18:59:54.727Z",
+                                                             "id":  2,
+                                                             "workflowId":  "Raf39Xrh1R9YiQo0",
+                                                             "versionId":  "4be78df4-3161-4e9e-a2e6-e86940b250e2",
+                                                             "event":  "activated",
+                                                             "userId":  "36112817-d7c5-4bcc-b4f6-e76b96ea308e"
+                                                         },
+                                                         {
+                                                             "createdAt":  "2026-03-15T19:07:55.588Z",
+                                                             "id":  4,
+                                                             "workflowId":  "Raf39Xrh1R9YiQo0",
+                                                             "versionId":  "4be78df4-3161-4e9e-a2e6-e86940b250e2",
+                                                             "event":  "activated",
+                                                             "userId":  "36112817-d7c5-4bcc-b4f6-e76b96ea308e"
+                                                         },
+                                                         {
+                                                             "createdAt":  "2026-03-18T18:42:47.494Z",
+                                                             "id":  72,
+                                                             "workflowId":  "Raf39Xrh1R9YiQo0",
+                                                             "versionId":  "4be78df4-3161-4e9e-a2e6-e86940b250e2",
+                                                             "event":  "activated",
+                                                             "userId":  "36112817-d7c5-4bcc-b4f6-e76b96ea308e"
+                                                         },
+                                                         {
+                                                             "createdAt":  "2026-03-15T19:02:46.692Z",
+                                                             "id":  3,
+                                                             "workflowId":  "Raf39Xrh1R9YiQo0",
+                                                             "versionId":  "4be78df4-3161-4e9e-a2e6-e86940b250e2",
+                                                             "event":  "deactivated",
+                                                             "userId":  "36112817-d7c5-4bcc-b4f6-e76b96ea308e"
+                                                         },
+                                                         {
+                                                             "createdAt":  "2026-03-18T18:37:21.784Z",
+                                                             "id":  68,
+                                                             "workflowId":  "Raf39Xrh1R9YiQo0",
+                                                             "versionId":  "4be78df4-3161-4e9e-a2e6-e86940b250e2",
+                                                             "event":  "deactivated",
+                                                             "userId":  "36112817-d7c5-4bcc-b4f6-e76b96ea308e"
+                                                         }
+                                                     ]
+                      }
+}

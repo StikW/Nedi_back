@@ -1,0 +1,1190 @@
+﻿{
+    "updatedAt":  "2026-05-12T00:12:29.363Z",
+    "createdAt":  "2026-03-04T19:56:54.358Z",
+    "id":  "5wX3L3zO2av1ke1Y",
+    "name":  "WF_GeneradorPreguntas",
+    "description":  null,
+    "active":  true,
+    "isArchived":  false,
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "phoneNumber"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "module"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "course"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "80c9deff-0277-4e26-b5b7-d42d77010772",
+                      "name":  "When Executed by Another Workflow"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "getAll",
+                                         "bucketName":  "ai-nedi-learning-modules",
+                                         "options":  {
+                                                         "folderKey":  "=courses/{{ $json.course }}/modules/{{ $json.module }}/"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.awsS3",
+                      "typeVersion":  2,
+                      "position":  [
+                                       256,
+                                       0
+                                   ],
+                      "id":  "33f395d0-7dc7-4d7e-a1b6-e0dd0e1fb7b1",
+                      "name":  "Get many files",
+                      "alwaysOutputData":  true,
+                      "credentials":  {
+                                          "aws":  {
+                                                      "id":  "neB7cpA9MnnEEp5g",
+                                                      "name":  "AWS (IAM) Prod"
+                                                  }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "bucketName":  "ai-nedi-learning-modules",
+                                         "fileKey":  "={{ $json.Key }}"
+                                     },
+                      "type":  "n8n-nodes-base.awsS3",
+                      "typeVersion":  2,
+                      "position":  [
+                                       848,
+                                       16
+                                   ],
+                      "id":  "4da7825a-2158-4f5b-abbd-c1df2290a8b7",
+                      "name":  "Download a file",
+                      "alwaysOutputData":  false,
+                      "credentials":  {
+                                          "aws":  {
+                                                      "id":  "neB7cpA9MnnEEp5g",
+                                                      "name":  "AWS (IAM) Prod"
+                                                  }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "batchSize":  "=1",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.splitInBatches",
+                      "typeVersion":  3,
+                      "position":  [
+                                       1184,
+                                       16
+                                   ],
+                      "id":  "5e40ef2b-87fa-4dc7-af57-6dd73784fe84",
+                      "name":  "Loop Over Items"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "leftValue":  "",
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "ac71707b-1384-4bdb-8cef-2f3260022d16",
+                                                                                   "leftValue":  "={{ $json.Key }}",
+                                                                                   "rightValue":  "",
+                                                                                   "operator":  {
+                                                                                                    "type":  "string",
+                                                                                                    "operation":  "notExists",
+                                                                                                    "singleValue":  true
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1344,
+                                       176
+                                   ],
+                      "id":  "4ba7b80f-460e-4b5e-aeca-fa8b20ecab43",
+                      "name":  "If"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "pdf",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.extractFromFile",
+                      "typeVersion":  1,
+                      "position":  [
+                                       1856,
+                                       240
+                                   ],
+                      "id":  "f8aac53c-4e01-4b71-bf11-42b641e2b4b2",
+                      "name":  "Extract from File1"
+                  },
+                  {
+                      "parameters":  {
+                                         "fieldsToAggregate":  {
+                                                                   "fieldToAggregate":  [
+                                                                                            {
+                                                                                                "fieldToAggregate":  "text"
+                                                                                            }
+                                                                                        ]
+                                                               },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.aggregate",
+                      "typeVersion":  1,
+                      "position":  [
+                                       1760,
+                                       0
+                                   ],
+                      "id":  "6e4e48e6-8e33-4981-960e-53d94632506e",
+                      "name":  "Aggregate"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "leftValue":  "",
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "db4700b8-f5c1-4c69-84d0-4f8375249632",
+                                                                                   "leftValue":  "={{ $json.Key }}",
+                                                                                   "rightValue":  "",
+                                                                                   "operator":  {
+                                                                                                    "type":  "string",
+                                                                                                    "operation":  "exists",
+                                                                                                    "singleValue":  true
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       464,
+                                       0
+                                   ],
+                      "id":  "bf45a40a-1820-4612-a23f-20d7b25fd969",
+                      "name":  "If1"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "591abdd5-f5b4-408f-9f00-519498093b4f",
+                                                                                     "name":  "response",
+                                                                                     "value":  "aún no hay recursos",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       656,
+                                       192
+                                   ],
+                      "id":  "2d0e3583-6d14-4749-9285-16e0737740ed",
+                      "name":  "Edit Fields"
+                  },
+                  {
+                      "parameters":  {
+                                         "promptType":  "define",
+                                         "text":  "=Contenido del módulo:{{ $json.text[0] }}",
+                                         "options":  {
+                                                         "systemMessage":  "=Eres un generador de preguntas educativas. \nTu tarea es analizar el contenido proporcionado del módulo de un curso y producir un conjunto de preguntas \nque evalúen la comprensión del usuario.\n\nRequisitos:\n- Genera entre 5 y 7 preguntas por módulo.\n- Usa diferentes tipos de preguntas: verdadero/falso, completar la frase, relación de conceptos, opción múltiple, etc.\n- Cada pregunta debe incluir opciones de respuesta (si aplica) y la respuesta correcta.\n- Las preguntas deben ser objetivas y medibles, nunca de opinión.\n- **Todas las preguntas deben poder responderse únicamente con la información contenida en el material proporcionado. No inventes ni asumas conocimiento externo.**\n- Las preguntas no deben ser superficiales, deben tener cierto grado de complejidad.\n- Devuelve el resultado únicamente en formato JSON válido con la siguiente estructura:\n\n{\n  \"preguntas\": [\n    {\n      \"pregunta\": \"Texto de la pregunta\",\n      \"tipo\": \"opcion_multiple\" | \"verdadero_falso\" | \"completar\" | \"relacionar\",\n      \"opciones\": [\"opcion1\", \"opcion2\", \"opcion3\"], // si aplica\n      \"respuesta_correcta\": \"texto o índice de la respuesta correcta\"\n    }\n  ]\n}\n\nEjemplo de output:\n{\n  \"preguntas\": [\n    {\n      \"pregunta\": \"¿Qué órgano es responsable de bombear la sangre en el cuerpo humano?\",\n      \"tipo\": \"opcion_multiple\",\n      \"opciones\": [\"Pulmones\", \"Hígado\", \"Corazón\", \"Riñones\"],\n      \"respuesta_correcta\": \"Corazón\"\n    },\n    {\n      \"pregunta\": \"La fotosíntesis ocurre en las hojas de las plantas. ¿Verdadero o falso?\",\n      \"tipo\": \"verdadero_falso\",\n      \"opciones\": [\"Verdadero\", \"Falso\"],\n      \"respuesta_correcta\": \"Verdadero\"\n    }\n  ]\n}\n\n# NOTAS: \n- Haz que las no sean inconsistentes, en el sentido en el que si estás usando a, b, c, d, para las opciones, no cambies luego a 1, 2, 3, 4.\n- Que sean preguntas diversas, no todas de opción múltiple, que haya diversidad entre un tipo de pregunta y otra, ejemplo una puede ser verdadero/falso, la siguiente opción múltiple, la siguiente completar la frase, la siguiente relacionar conceptos, etc. (no repetir tanto un solo tipo de pregunta)\n\n\n\n"
+                                                     }
+                                     },
+                      "type":  "@n8n/n8n-nodes-langchain.agent",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       2128,
+                                       0
+                                   ],
+                      "id":  "c0d481a4-46cc-4327-90ec-37b8eb372250",
+                      "name":  "AI Agent"
+                  },
+                  {
+                      "parameters":  {
+                                         "model":  {
+                                                       "__rl":  true,
+                                                       "value":  "gpt-5.1",
+                                                       "mode":  "list",
+                                                       "cachedResultName":  "gpt-5.1"
+                                                   },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       2080,
+                                       176
+                                   ],
+                      "id":  "bfb9743e-16ff-4281-b297-dc31c64c7a09",
+                      "name":  "OpenAI Chat Model",
+                      "credentials":  {
+                                          "openAiApi":  {
+                                                            "id":  "EapstMXi4GkbrDsy",
+                                                            "name":  "OpenAi account"
+                                                        }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "sessionIdType":  "customKey",
+                                         "sessionKey":  "={{ $(\u0027When Executed by Another Workflow\u0027).item.json.module }}"
+                                     },
+                      "type":  "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+                      "typeVersion":  1.3,
+                      "position":  [
+                                       2224,
+                                       256
+                                   ],
+                      "id":  "234e48c0-a63e-4091-9043-bbf078eefdea",
+                      "name":  "Simple Memory"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "ebdcea30-ee31-43dd-8488-d8ae54a41af7",
+                                                                                     "name":  "output",
+                                                                                     "value":  "={{ JSON.parse($json.output) }}",
+                                                                                     "type":  "object"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       2496,
+                                       0
+                                   ],
+                      "id":  "4ffd7c05-626e-4326-a52e-5370d0993ea0",
+                      "name":  "Edit Fields1"
+                  },
+                  {
+                      "parameters":  {
+                                         "tableName":  "CourseModuleQuestions",
+                                         "fieldsUi":  {
+                                                          "fieldValues":  [
+                                                                              {
+                                                                                  "fieldId":  "courseId",
+                                                                                  "fieldValue":  "={{ $(\u0027When Executed by Another Workflow\u0027).item.json.course }}"
+                                                                              },
+                                                                              {
+                                                                                  "fieldId":  "moduleId",
+                                                                                  "fieldValue":  "={{ $(\u0027When Executed by Another Workflow\u0027).item.json.module }}"
+                                                                              },
+                                                                              {
+                                                                                  "fieldId":  "questions",
+                                                                                  "fieldValue":  "={{ JSON.stringify($json.output.preguntas) }}"
+                                                                              }
+                                                                          ]
+                                                      },
+                                         "additionalFields":  {
+
+                                                              }
+                                     },
+                      "type":  "n8n-nodes-base.awsDynamoDb",
+                      "typeVersion":  1,
+                      "position":  [
+                                       2816,
+                                       0
+                                   ],
+                      "id":  "ecea1891-461e-4090-8db9-9d139ffbc5f2",
+                      "name":  "Create or update an item",
+                      "credentials":  {
+                                          "aws":  {
+                                                      "id":  "neB7cpA9MnnEEp5g",
+                                                      "name":  "AWS (IAM) Prod"
+                                                  }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "leftValue":  "",
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "22aae365-683f-4352-8637-713e6ae69354",
+                                                                                   "leftValue":  "={{ $json.Key.split(\".\").last() }}",
+                                                                                   "rightValue":  "pdf",
+                                                                                   "operator":  {
+                                                                                                    "type":  "string",
+                                                                                                    "operation":  "equals",
+                                                                                                    "name":  "filter.operator.equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1568,
+                                       192
+                                   ],
+                      "id":  "89da8b3b-c5ab-419a-9b7b-0bd4e03e166a",
+                      "name":  "condicionalPdf"
+                  }
+              ],
+    "connections":  {
+                        "When Executed by Another Workflow":  {
+                                                                  "main":  [
+                                                                               [
+                                                                                   {
+                                                                                       "node":  "Get many files",
+                                                                                       "type":  "main",
+                                                                                       "index":  0
+                                                                                   }
+                                                                               ]
+                                                                           ]
+                                                              },
+                        "Get many files":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "node":  "If1",
+                                                                    "type":  "main",
+                                                                    "index":  0
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "Download a file":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "node":  "Loop Over Items",
+                                                                     "type":  "main",
+                                                                     "index":  0
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Loop Over Items":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "node":  "Aggregate",
+                                                                     "type":  "main",
+                                                                     "index":  0
+                                                                 }
+                                                             ],
+                                                             [
+                                                                 {
+                                                                     "node":  "If",
+                                                                     "type":  "main",
+                                                                     "index":  0
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "If":  {
+                                   "main":  [
+                                                [
+                                                    {
+                                                        "node":  "Loop Over Items",
+                                                        "type":  "main",
+                                                        "index":  0
+                                                    }
+                                                ],
+                                                [
+                                                    {
+                                                        "node":  "condicionalPdf",
+                                                        "type":  "main",
+                                                        "index":  0
+                                                    }
+                                                ]
+                                            ]
+                               },
+                        "Extract from File1":  {
+                                                   "main":  [
+                                                                [
+                                                                    {
+                                                                        "node":  "Loop Over Items",
+                                                                        "type":  "main",
+                                                                        "index":  0
+                                                                    }
+                                                                ]
+                                                            ]
+                                               },
+                        "Aggregate":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "node":  "AI Agent",
+                                                               "type":  "main",
+                                                               "index":  0
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
+                        "If1":  {
+                                    "main":  [
+                                                 [
+                                                     {
+                                                         "node":  "Download a file",
+                                                         "type":  "main",
+                                                         "index":  0
+                                                     }
+                                                 ],
+                                                 [
+                                                     {
+                                                         "node":  "Edit Fields",
+                                                         "type":  "main",
+                                                         "index":  0
+                                                     }
+                                                 ]
+                                             ]
+                                },
+                        "OpenAI Chat Model":  {
+                                                  "ai_languageModel":  [
+                                                                           [
+                                                                               {
+                                                                                   "node":  "AI Agent",
+                                                                                   "type":  "ai_languageModel",
+                                                                                   "index":  0
+                                                                               }
+                                                                           ]
+                                                                       ]
+                                              },
+                        "Simple Memory":  {
+                                              "ai_memory":  [
+                                                                [
+                                                                    {
+                                                                        "node":  "AI Agent",
+                                                                        "type":  "ai_memory",
+                                                                        "index":  0
+                                                                    }
+                                                                ]
+                                                            ]
+                                          },
+                        "AI Agent":  {
+                                         "main":  [
+                                                      [
+                                                          {
+                                                              "node":  "Edit Fields1",
+                                                              "type":  "main",
+                                                              "index":  0
+                                                          }
+                                                      ]
+                                                  ]
+                                     },
+                        "Edit Fields1":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "node":  "Create or update an item",
+                                                                  "type":  "main",
+                                                                  "index":  0
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "condicionalPdf":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "node":  "Extract from File1",
+                                                                    "type":  "main",
+                                                                    "index":  0
+                                                                }
+                                                            ],
+                                                            [
+                                                                {
+                                                                    "node":  "Loop Over Items",
+                                                                    "type":  "main",
+                                                                    "index":  0
+                                                                }
+                                                            ]
+                                                        ]
+                                           }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "binaryMode":  "separate",
+                     "availableInMCP":  false,
+                     "callerPolicy":  "workflowsFromSameOwner"
+                 },
+    "staticData":  null,
+    "meta":  {
+                 "templateCredsSetupCompleted":  true
+             },
+    "pinData":  {
+                    "When Executed by Another Workflow":  [
+                                                              {
+                                                                  "json":  {
+                                                                               "phoneNumber":  "573147311511",
+                                                                               "module":  "03c04cd3-26f2-401b-a2a5-ed9cc6e0d17f",
+                                                                               "course":  "8356c8b3-279d-4c8a-ba0c-c86ee5976af7"
+                                                                           }
+                                                              }
+                                                          ]
+                },
+    "versionId":  "4e0f4c37-6f31-4173-82e2-f343128733c7",
+    "activeVersionId":  "4e0f4c37-6f31-4173-82e2-f343128733c7",
+    "versionCounter":  51,
+    "triggerCount":  0,
+    "shared":  [
+                   {
+                       "updatedAt":  "2026-03-04T19:56:54.360Z",
+                       "createdAt":  "2026-03-04T19:56:54.360Z",
+                       "role":  "workflow:owner",
+                       "workflowId":  "5wX3L3zO2av1ke1Y",
+                       "projectId":  "D2B8jYcj2oWbWNjW",
+                       "project":  {
+                                       "updatedAt":  "2026-03-03T21:30:49.196Z",
+                                       "createdAt":  "2026-02-27T23:26:57.527Z",
+                                       "id":  "D2B8jYcj2oWbWNjW",
+                                       "name":  "Hao Tech \u003cgrupohaosas@gmail.com\u003e",
+                                       "type":  "personal",
+                                       "icon":  null,
+                                       "description":  null,
+                                       "creatorId":  "36112817-d7c5-4bcc-b4f6-e76b96ea308e"
+                                   }
+                   }
+               ],
+    "tags":  [
+
+             ],
+    "activeVersion":  {
+                          "updatedAt":  "2026-05-12T00:12:29.364Z",
+                          "createdAt":  "2026-05-12T00:12:29.364Z",
+                          "versionId":  "4e0f4c37-6f31-4173-82e2-f343128733c7",
+                          "workflowId":  "5wX3L3zO2av1ke1Y",
+                          "nodes":  [
+                                        {
+                                            "parameters":  {
+                                                               "workflowInputs":  {
+                                                                                      "values":  [
+                                                                                                     {
+                                                                                                         "name":  "phoneNumber"
+                                                                                                     },
+                                                                                                     {
+                                                                                                         "name":  "module"
+                                                                                                     },
+                                                                                                     {
+                                                                                                         "name":  "course"
+                                                                                                     }
+                                                                                                 ]
+                                                                                  }
+                                                           },
+                                            "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                                            "typeVersion":  1.1,
+                                            "position":  [
+                                                             0,
+                                                             0
+                                                         ],
+                                            "id":  "80c9deff-0277-4e26-b5b7-d42d77010772",
+                                            "name":  "When Executed by Another Workflow"
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "operation":  "getAll",
+                                                               "bucketName":  "ai-nedi-learning-modules",
+                                                               "options":  {
+                                                                               "folderKey":  "=courses/{{ $json.course }}/modules/{{ $json.module }}/"
+                                                                           }
+                                                           },
+                                            "type":  "n8n-nodes-base.awsS3",
+                                            "typeVersion":  2,
+                                            "position":  [
+                                                             256,
+                                                             0
+                                                         ],
+                                            "id":  "33f395d0-7dc7-4d7e-a1b6-e0dd0e1fb7b1",
+                                            "name":  "Get many files",
+                                            "alwaysOutputData":  true,
+                                            "credentials":  {
+                                                                "aws":  {
+                                                                            "id":  "neB7cpA9MnnEEp5g",
+                                                                            "name":  "AWS (IAM) Prod"
+                                                                        }
+                                                            }
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "bucketName":  "ai-nedi-learning-modules",
+                                                               "fileKey":  "={{ $json.Key }}"
+                                                           },
+                                            "type":  "n8n-nodes-base.awsS3",
+                                            "typeVersion":  2,
+                                            "position":  [
+                                                             848,
+                                                             16
+                                                         ],
+                                            "id":  "4da7825a-2158-4f5b-abbd-c1df2290a8b7",
+                                            "name":  "Download a file",
+                                            "alwaysOutputData":  false,
+                                            "credentials":  {
+                                                                "aws":  {
+                                                                            "id":  "neB7cpA9MnnEEp5g",
+                                                                            "name":  "AWS (IAM) Prod"
+                                                                        }
+                                                            }
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "batchSize":  "=1",
+                                                               "options":  {
+
+                                                                           }
+                                                           },
+                                            "type":  "n8n-nodes-base.splitInBatches",
+                                            "typeVersion":  3,
+                                            "position":  [
+                                                             1184,
+                                                             16
+                                                         ],
+                                            "id":  "5e40ef2b-87fa-4dc7-af57-6dd73784fe84",
+                                            "name":  "Loop Over Items"
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "conditions":  {
+                                                                                  "options":  {
+                                                                                                  "caseSensitive":  true,
+                                                                                                  "leftValue":  "",
+                                                                                                  "typeValidation":  "strict",
+                                                                                                  "version":  2
+                                                                                              },
+                                                                                  "conditions":  [
+                                                                                                     {
+                                                                                                         "id":  "ac71707b-1384-4bdb-8cef-2f3260022d16",
+                                                                                                         "leftValue":  "={{ $json.Key }}",
+                                                                                                         "rightValue":  "",
+                                                                                                         "operator":  {
+                                                                                                                          "type":  "string",
+                                                                                                                          "operation":  "notExists",
+                                                                                                                          "singleValue":  true
+                                                                                                                      }
+                                                                                                     }
+                                                                                                 ],
+                                                                                  "combinator":  "and"
+                                                                              },
+                                                               "options":  {
+
+                                                                           }
+                                                           },
+                                            "type":  "n8n-nodes-base.if",
+                                            "typeVersion":  2.2,
+                                            "position":  [
+                                                             1344,
+                                                             176
+                                                         ],
+                                            "id":  "4ba7b80f-460e-4b5e-aeca-fa8b20ecab43",
+                                            "name":  "If"
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "operation":  "pdf",
+                                                               "options":  {
+
+                                                                           }
+                                                           },
+                                            "type":  "n8n-nodes-base.extractFromFile",
+                                            "typeVersion":  1,
+                                            "position":  [
+                                                             1856,
+                                                             240
+                                                         ],
+                                            "id":  "f8aac53c-4e01-4b71-bf11-42b641e2b4b2",
+                                            "name":  "Extract from File1"
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "fieldsToAggregate":  {
+                                                                                         "fieldToAggregate":  [
+                                                                                                                  {
+                                                                                                                      "fieldToAggregate":  "text"
+                                                                                                                  }
+                                                                                                              ]
+                                                                                     },
+                                                               "options":  {
+
+                                                                           }
+                                                           },
+                                            "type":  "n8n-nodes-base.aggregate",
+                                            "typeVersion":  1,
+                                            "position":  [
+                                                             1760,
+                                                             0
+                                                         ],
+                                            "id":  "6e4e48e6-8e33-4981-960e-53d94632506e",
+                                            "name":  "Aggregate"
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "conditions":  {
+                                                                                  "options":  {
+                                                                                                  "caseSensitive":  true,
+                                                                                                  "leftValue":  "",
+                                                                                                  "typeValidation":  "strict",
+                                                                                                  "version":  2
+                                                                                              },
+                                                                                  "conditions":  [
+                                                                                                     {
+                                                                                                         "id":  "db4700b8-f5c1-4c69-84d0-4f8375249632",
+                                                                                                         "leftValue":  "={{ $json.Key }}",
+                                                                                                         "rightValue":  "",
+                                                                                                         "operator":  {
+                                                                                                                          "type":  "string",
+                                                                                                                          "operation":  "exists",
+                                                                                                                          "singleValue":  true
+                                                                                                                      }
+                                                                                                     }
+                                                                                                 ],
+                                                                                  "combinator":  "and"
+                                                                              },
+                                                               "options":  {
+
+                                                                           }
+                                                           },
+                                            "type":  "n8n-nodes-base.if",
+                                            "typeVersion":  2.2,
+                                            "position":  [
+                                                             464,
+                                                             0
+                                                         ],
+                                            "id":  "bf45a40a-1820-4612-a23f-20d7b25fd969",
+                                            "name":  "If1"
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "assignments":  {
+                                                                                   "assignments":  [
+                                                                                                       {
+                                                                                                           "id":  "591abdd5-f5b4-408f-9f00-519498093b4f",
+                                                                                                           "name":  "response",
+                                                                                                           "value":  "aún no hay recursos",
+                                                                                                           "type":  "string"
+                                                                                                       }
+                                                                                                   ]
+                                                                               },
+                                                               "options":  {
+
+                                                                           }
+                                                           },
+                                            "type":  "n8n-nodes-base.set",
+                                            "typeVersion":  3.4,
+                                            "position":  [
+                                                             656,
+                                                             192
+                                                         ],
+                                            "id":  "2d0e3583-6d14-4749-9285-16e0737740ed",
+                                            "name":  "Edit Fields"
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "promptType":  "define",
+                                                               "text":  "=Contenido del módulo:{{ $json.text[0] }}",
+                                                               "options":  {
+                                                                               "systemMessage":  "=Eres un generador de preguntas educativas. \nTu tarea es analizar el contenido proporcionado del módulo de un curso y producir un conjunto de preguntas \nque evalúen la comprensión del usuario.\n\nRequisitos:\n- Genera entre 5 y 7 preguntas por módulo.\n- Usa diferentes tipos de preguntas: verdadero/falso, completar la frase, relación de conceptos, opción múltiple, etc.\n- Cada pregunta debe incluir opciones de respuesta (si aplica) y la respuesta correcta.\n- Las preguntas deben ser objetivas y medibles, nunca de opinión.\n- **Todas las preguntas deben poder responderse únicamente con la información contenida en el material proporcionado. No inventes ni asumas conocimiento externo.**\n- Las preguntas no deben ser superficiales, deben tener cierto grado de complejidad.\n- Devuelve el resultado únicamente en formato JSON válido con la siguiente estructura:\n\n{\n  \"preguntas\": [\n    {\n      \"pregunta\": \"Texto de la pregunta\",\n      \"tipo\": \"opcion_multiple\" | \"verdadero_falso\" | \"completar\" | \"relacionar\",\n      \"opciones\": [\"opcion1\", \"opcion2\", \"opcion3\"], // si aplica\n      \"respuesta_correcta\": \"texto o índice de la respuesta correcta\"\n    }\n  ]\n}\n\nEjemplo de output:\n{\n  \"preguntas\": [\n    {\n      \"pregunta\": \"¿Qué órgano es responsable de bombear la sangre en el cuerpo humano?\",\n      \"tipo\": \"opcion_multiple\",\n      \"opciones\": [\"Pulmones\", \"Hígado\", \"Corazón\", \"Riñones\"],\n      \"respuesta_correcta\": \"Corazón\"\n    },\n    {\n      \"pregunta\": \"La fotosíntesis ocurre en las hojas de las plantas. ¿Verdadero o falso?\",\n      \"tipo\": \"verdadero_falso\",\n      \"opciones\": [\"Verdadero\", \"Falso\"],\n      \"respuesta_correcta\": \"Verdadero\"\n    }\n  ]\n}\n\n# NOTAS: \n- Haz que las no sean inconsistentes, en el sentido en el que si estás usando a, b, c, d, para las opciones, no cambies luego a 1, 2, 3, 4.\n- Que sean preguntas diversas, no todas de opción múltiple, que haya diversidad entre un tipo de pregunta y otra, ejemplo una puede ser verdadero/falso, la siguiente opción múltiple, la siguiente completar la frase, la siguiente relacionar conceptos, etc. (no repetir tanto un solo tipo de pregunta)\n\n\n\n"
+                                                                           }
+                                                           },
+                                            "type":  "@n8n/n8n-nodes-langchain.agent",
+                                            "typeVersion":  2.2,
+                                            "position":  [
+                                                             2128,
+                                                             0
+                                                         ],
+                                            "id":  "c0d481a4-46cc-4327-90ec-37b8eb372250",
+                                            "name":  "AI Agent"
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "model":  {
+                                                                             "__rl":  true,
+                                                                             "value":  "gpt-5.1",
+                                                                             "mode":  "list",
+                                                                             "cachedResultName":  "gpt-5.1"
+                                                                         },
+                                                               "options":  {
+
+                                                                           }
+                                                           },
+                                            "type":  "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+                                            "typeVersion":  1.2,
+                                            "position":  [
+                                                             2080,
+                                                             176
+                                                         ],
+                                            "id":  "bfb9743e-16ff-4281-b297-dc31c64c7a09",
+                                            "name":  "OpenAI Chat Model",
+                                            "credentials":  {
+                                                                "openAiApi":  {
+                                                                                  "id":  "EapstMXi4GkbrDsy",
+                                                                                  "name":  "OpenAi account"
+                                                                              }
+                                                            }
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "sessionIdType":  "customKey",
+                                                               "sessionKey":  "={{ $(\u0027When Executed by Another Workflow\u0027).item.json.module }}"
+                                                           },
+                                            "type":  "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+                                            "typeVersion":  1.3,
+                                            "position":  [
+                                                             2224,
+                                                             256
+                                                         ],
+                                            "id":  "234e48c0-a63e-4091-9043-bbf078eefdea",
+                                            "name":  "Simple Memory"
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "assignments":  {
+                                                                                   "assignments":  [
+                                                                                                       {
+                                                                                                           "id":  "ebdcea30-ee31-43dd-8488-d8ae54a41af7",
+                                                                                                           "name":  "output",
+                                                                                                           "value":  "={{ JSON.parse($json.output) }}",
+                                                                                                           "type":  "object"
+                                                                                                       }
+                                                                                                   ]
+                                                                               },
+                                                               "options":  {
+
+                                                                           }
+                                                           },
+                                            "type":  "n8n-nodes-base.set",
+                                            "typeVersion":  3.4,
+                                            "position":  [
+                                                             2496,
+                                                             0
+                                                         ],
+                                            "id":  "4ffd7c05-626e-4326-a52e-5370d0993ea0",
+                                            "name":  "Edit Fields1"
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "tableName":  "CourseModuleQuestions",
+                                                               "fieldsUi":  {
+                                                                                "fieldValues":  [
+                                                                                                    {
+                                                                                                        "fieldId":  "courseId",
+                                                                                                        "fieldValue":  "={{ $(\u0027When Executed by Another Workflow\u0027).item.json.course }}"
+                                                                                                    },
+                                                                                                    {
+                                                                                                        "fieldId":  "moduleId",
+                                                                                                        "fieldValue":  "={{ $(\u0027When Executed by Another Workflow\u0027).item.json.module }}"
+                                                                                                    },
+                                                                                                    {
+                                                                                                        "fieldId":  "questions",
+                                                                                                        "fieldValue":  "={{ JSON.stringify($json.output.preguntas) }}"
+                                                                                                    }
+                                                                                                ]
+                                                                            },
+                                                               "additionalFields":  {
+
+                                                                                    }
+                                                           },
+                                            "type":  "n8n-nodes-base.awsDynamoDb",
+                                            "typeVersion":  1,
+                                            "position":  [
+                                                             2816,
+                                                             0
+                                                         ],
+                                            "id":  "ecea1891-461e-4090-8db9-9d139ffbc5f2",
+                                            "name":  "Create or update an item",
+                                            "credentials":  {
+                                                                "aws":  {
+                                                                            "id":  "neB7cpA9MnnEEp5g",
+                                                                            "name":  "AWS (IAM) Prod"
+                                                                        }
+                                                            }
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "conditions":  {
+                                                                                  "options":  {
+                                                                                                  "caseSensitive":  true,
+                                                                                                  "leftValue":  "",
+                                                                                                  "typeValidation":  "strict",
+                                                                                                  "version":  2
+                                                                                              },
+                                                                                  "conditions":  [
+                                                                                                     {
+                                                                                                         "id":  "22aae365-683f-4352-8637-713e6ae69354",
+                                                                                                         "leftValue":  "={{ $json.Key.split(\".\").last() }}",
+                                                                                                         "rightValue":  "pdf",
+                                                                                                         "operator":  {
+                                                                                                                          "type":  "string",
+                                                                                                                          "operation":  "equals",
+                                                                                                                          "name":  "filter.operator.equals"
+                                                                                                                      }
+                                                                                                     }
+                                                                                                 ],
+                                                                                  "combinator":  "and"
+                                                                              },
+                                                               "options":  {
+
+                                                                           }
+                                                           },
+                                            "type":  "n8n-nodes-base.if",
+                                            "typeVersion":  2.2,
+                                            "position":  [
+                                                             1568,
+                                                             192
+                                                         ],
+                                            "id":  "89da8b3b-c5ab-419a-9b7b-0bd4e03e166a",
+                                            "name":  "condicionalPdf"
+                                        }
+                                    ],
+                          "connections":  {
+                                              "When Executed by Another Workflow":  {
+                                                                                        "main":  [
+                                                                                                     [
+                                                                                                         {
+                                                                                                             "node":  "Get many files",
+                                                                                                             "type":  "main",
+                                                                                                             "index":  0
+                                                                                                         }
+                                                                                                     ]
+                                                                                                 ]
+                                                                                    },
+                                              "Get many files":  {
+                                                                     "main":  [
+                                                                                  [
+                                                                                      {
+                                                                                          "node":  "If1",
+                                                                                          "type":  "main",
+                                                                                          "index":  0
+                                                                                      }
+                                                                                  ]
+                                                                              ]
+                                                                 },
+                                              "Download a file":  {
+                                                                      "main":  [
+                                                                                   [
+                                                                                       {
+                                                                                           "node":  "Loop Over Items",
+                                                                                           "type":  "main",
+                                                                                           "index":  0
+                                                                                       }
+                                                                                   ]
+                                                                               ]
+                                                                  },
+                                              "Loop Over Items":  {
+                                                                      "main":  [
+                                                                                   [
+                                                                                       {
+                                                                                           "node":  "Aggregate",
+                                                                                           "type":  "main",
+                                                                                           "index":  0
+                                                                                       }
+                                                                                   ],
+                                                                                   [
+                                                                                       {
+                                                                                           "node":  "If",
+                                                                                           "type":  "main",
+                                                                                           "index":  0
+                                                                                       }
+                                                                                   ]
+                                                                               ]
+                                                                  },
+                                              "If":  {
+                                                         "main":  [
+                                                                      [
+                                                                          {
+                                                                              "node":  "Loop Over Items",
+                                                                              "type":  "main",
+                                                                              "index":  0
+                                                                          }
+                                                                      ],
+                                                                      [
+                                                                          {
+                                                                              "node":  "condicionalPdf",
+                                                                              "type":  "main",
+                                                                              "index":  0
+                                                                          }
+                                                                      ]
+                                                                  ]
+                                                     },
+                                              "Extract from File1":  {
+                                                                         "main":  [
+                                                                                      [
+                                                                                          {
+                                                                                              "node":  "Loop Over Items",
+                                                                                              "type":  "main",
+                                                                                              "index":  0
+                                                                                          }
+                                                                                      ]
+                                                                                  ]
+                                                                     },
+                                              "Aggregate":  {
+                                                                "main":  [
+                                                                             [
+                                                                                 {
+                                                                                     "node":  "AI Agent",
+                                                                                     "type":  "main",
+                                                                                     "index":  0
+                                                                                 }
+                                                                             ]
+                                                                         ]
+                                                            },
+                                              "If1":  {
+                                                          "main":  [
+                                                                       [
+                                                                           {
+                                                                               "node":  "Download a file",
+                                                                               "type":  "main",
+                                                                               "index":  0
+                                                                           }
+                                                                       ],
+                                                                       [
+                                                                           {
+                                                                               "node":  "Edit Fields",
+                                                                               "type":  "main",
+                                                                               "index":  0
+                                                                           }
+                                                                       ]
+                                                                   ]
+                                                      },
+                                              "OpenAI Chat Model":  {
+                                                                        "ai_languageModel":  [
+                                                                                                 [
+                                                                                                     {
+                                                                                                         "node":  "AI Agent",
+                                                                                                         "type":  "ai_languageModel",
+                                                                                                         "index":  0
+                                                                                                     }
+                                                                                                 ]
+                                                                                             ]
+                                                                    },
+                                              "Simple Memory":  {
+                                                                    "ai_memory":  [
+                                                                                      [
+                                                                                          {
+                                                                                              "node":  "AI Agent",
+                                                                                              "type":  "ai_memory",
+                                                                                              "index":  0
+                                                                                          }
+                                                                                      ]
+                                                                                  ]
+                                                                },
+                                              "AI Agent":  {
+                                                               "main":  [
+                                                                            [
+                                                                                {
+                                                                                    "node":  "Edit Fields1",
+                                                                                    "type":  "main",
+                                                                                    "index":  0
+                                                                                }
+                                                                            ]
+                                                                        ]
+                                                           },
+                                              "Edit Fields1":  {
+                                                                   "main":  [
+                                                                                [
+                                                                                    {
+                                                                                        "node":  "Create or update an item",
+                                                                                        "type":  "main",
+                                                                                        "index":  0
+                                                                                    }
+                                                                                ]
+                                                                            ]
+                                                               },
+                                              "condicionalPdf":  {
+                                                                     "main":  [
+                                                                                  [
+                                                                                      {
+                                                                                          "node":  "Extract from File1",
+                                                                                          "type":  "main",
+                                                                                          "index":  0
+                                                                                      }
+                                                                                  ],
+                                                                                  [
+                                                                                      {
+                                                                                          "node":  "Loop Over Items",
+                                                                                          "type":  "main",
+                                                                                          "index":  0
+                                                                                      }
+                                                                                  ]
+                                                                              ]
+                                                                 }
+                                          },
+                          "authors":  "Hao Tech",
+                          "name":  null,
+                          "description":  null,
+                          "autosaved":  false,
+                          "workflowPublishHistory":  [
+                                                         {
+                                                             "createdAt":  "2026-05-12T00:12:29.437Z",
+                                                             "id":  257,
+                                                             "workflowId":  "5wX3L3zO2av1ke1Y",
+                                                             "versionId":  "4e0f4c37-6f31-4173-82e2-f343128733c7",
+                                                             "event":  "activated",
+                                                             "userId":  "36112817-d7c5-4bcc-b4f6-e76b96ea308e"
+                                                         },
+                                                         {
+                                                             "createdAt":  "2026-05-12T00:12:29.416Z",
+                                                             "id":  256,
+                                                             "workflowId":  "5wX3L3zO2av1ke1Y",
+                                                             "versionId":  "4e0f4c37-6f31-4173-82e2-f343128733c7",
+                                                             "event":  "deactivated",
+                                                             "userId":  "36112817-d7c5-4bcc-b4f6-e76b96ea308e"
+                                                         }
+                                                     ]
+                      }
+}

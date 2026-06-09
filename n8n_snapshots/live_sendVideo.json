@@ -1,0 +1,779 @@
+﻿{
+    "updatedAt":  "2026-06-06T16:00:54.021Z",
+    "createdAt":  "2026-03-04T19:49:08.260Z",
+    "id":  "MdKkoWEZwLYRQ0vS",
+    "name":  "sendVideo",
+    "description":  null,
+    "active":  true,
+    "isArchived":  false,
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "module"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "phoneNumber"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "apikey"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       -864,
+                                       128
+                                   ],
+                      "id":  "e13f95c4-237a-4c2c-ad6a-7712ef0c49eb",
+                      "name":  "When Executed by Another Workflow"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "leftValue":  "",
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "db4700b8-f5c1-4c69-84d0-4f8375249632",
+                                                                                   "leftValue":  "={{ $json.content }}",
+                                                                                   "rightValue":  "",
+                                                                                   "operator":  {
+                                                                                                    "type":  "string",
+                                                                                                    "operation":  "exists",
+                                                                                                    "singleValue":  true
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -240,
+                                       128
+                                   ],
+                      "id":  "dad7509e-14f5-4ba7-8f7d-c9a802d664c9",
+                      "name":  "If1"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "591abdd5-f5b4-408f-9f00-519498093b4f",
+                                                                                     "name":  "response",
+                                                                                     "value":  "no hay video para este módulo",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       32,
+                                       304
+                                   ],
+                      "id":  "78546822-61d6-4731-b2af-4a3a10c1f3a6",
+                      "name":  "Edit Fields"
+                  },
+                  {
+                      "parameters":  {
+                                         "rules":  {
+                                                       "values":  [
+                                                                      {
+                                                                          "conditions":  {
+                                                                                             "options":  {
+                                                                                                             "caseSensitive":  true,
+                                                                                                             "leftValue":  "",
+                                                                                                             "typeValidation":  "strict",
+                                                                                                             "version":  2
+                                                                                                         },
+                                                                                             "conditions":  [
+                                                                                                                {
+                                                                                                                    "leftValue":  "={{ $json.Key.split(\".\").last() }}",
+                                                                                                                    "rightValue":  "mp4",
+                                                                                                                    "operator":  {
+                                                                                                                                     "type":  "string",
+                                                                                                                                     "operation":  "equals"
+                                                                                                                                 },
+                                                                                                                    "id":  "f7b536e3-65dd-4774-8dcf-d61daa9e9e25"
+                                                                                                                }
+                                                                                                            ],
+                                                                                             "combinator":  "and"
+                                                                                         },
+                                                                          "renameOutput":  true,
+                                                                          "outputKey":  "mp4"
+                                                                      }
+                                                                  ]
+                                                   },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.switch",
+                      "typeVersion":  3.3,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "a21f2559-6897-4d93-9ec6-610d9d718eeb",
+                      "name":  "Switch"
+                  },
+                  {
+                      "parameters":  {
+                                         "method":  "POST",
+                                         "url":  "http://13.59.170.47:8080/message/sendMedia/NediProd",
+                                         "sendHeaders":  true,
+                                         "headerParameters":  {
+                                                                  "parameters":  [
+                                                                                     {
+                                                                                         "name":  "apikey",
+                                                                                         "value":  "={{ $(\u0027When Executed by Another Workflow\u0027).item.json.apikey }}"
+                                                                                     }
+                                                                                 ]
+                                                              },
+                                         "sendBody":  true,
+                                         "bodyParameters":  {
+                                                                "parameters":  [
+                                                                                   {
+                                                                                       "name":  "number",
+                                                                                       "value":  "={{ $(\u0027When Executed by Another Workflow\u0027).item.json.phoneNumber }}"
+                                                                                   },
+                                                                                   {
+                                                                                       "name":  "mediatype",
+                                                                                       "value":  "video"
+                                                                                   },
+                                                                                   {
+                                                                                       "name":  "fileName",
+                                                                                       "value":  "=video-{{ $(\u0027When Executed by Another Workflow\u0027).item.json.module }}.mp4"
+                                                                                   },
+                                                                                   {
+                                                                                       "name":  "media",
+                                                                                       "value":  "={{ $json.content }}"
+                                                                                   },
+                                                                                   {
+                                                                                       "name":  "delay",
+                                                                                       "value":  "={{2000}}"
+                                                                                   },
+                                                                                   {
+                                                                                       "name":  "caption",
+                                                                                       "value":  "Vídeo del módulo - espera la primera pregunta ..."
+                                                                                   },
+                                                                                   {
+                                                                                       "name":  "mimetype",
+                                                                                       "value":  "video/mp4"
+                                                                                   }
+                                                                               ]
+                                                            },
+                                         "options":  {
+                                                         "timeout":  20000
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4.2,
+                      "position":  [
+                                       416,
+                                       288
+                                   ],
+                      "id":  "8b06697f-a0c0-4956-af12-992411906141",
+                      "name":  "HTTP Request",
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "method":  "POST",
+                                         "url":  "http://3.129.10.19:8080/message/sendText/THAgent",
+                                         "sendHeaders":  true,
+                                         "headerParameters":  {
+                                                                  "parameters":  [
+                                                                                     {
+                                                                                         "name":  "apikey",
+                                                                                         "value":  "={{ $(\u0027When Executed by Another Workflow\u0027).item.json.apikey }}"
+                                                                                     }
+                                                                                 ]
+                                                              },
+                                         "sendBody":  true,
+                                         "bodyParameters":  {
+                                                                "parameters":  [
+                                                                                   {
+                                                                                       "name":  "number",
+                                                                                       "value":  "={{ $(\u0027When Executed by Another Workflow\u0027).item.json.phoneNumber }}"
+                                                                                   },
+                                                                                   {
+                                                                                       "name":  "text",
+                                                                                       "value":  "ha funcionado https://www.youtube.com/watch?v=GlswfDW8Rd8"
+                                                                                   },
+                                                                                   {
+                                                                                       "name":  "delay",
+                                                                                       "value":  "={{5000}}"
+                                                                                   },
+                                                                                   {
+                                                                                       "name":  "linkPreview",
+                                                                                       "value":  "={{Boolean(\"true\")}}"
+                                                                                   },
+                                                                                   {
+                                                                                       "name":  "mentionsEveryOne",
+                                                                                       "value":  "={{Boolean(\"true\")}}"
+                                                                                   }
+                                                                               ]
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4.2,
+                      "position":  [
+                                       224,
+                                       0
+                                   ],
+                      "id":  "2235d744-c030-4fb8-8821-cfd19c6e5177",
+                      "name":  "Send message"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "591abdd5-f5b4-408f-9f00-519498093b4f",
+                                                                                     "name":  "response",
+                                                                                     "value":  "done",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       672,
+                                       288
+                                   ],
+                      "id":  "4d818514-f84d-4d87-8544-a27d7ff43828",
+                      "name":  "Edit Fields1"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "get",
+                                         "tableName":  "CourseModules",
+                                         "keysUi":  {
+                                                        "keyValues":  [
+                                                                          {
+                                                                              "key":  "id",
+                                                                              "value":  "={{ $(\u0027When Executed by Another Workflow\u0027).item.json.module }}"
+                                                                          }
+                                                                      ]
+                                                    },
+                                         "additionalFields":  {
+
+                                                              }
+                                     },
+                      "type":  "n8n-nodes-base.awsDynamoDb",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -464,
+                                       128
+                                   ],
+                      "id":  "cbc36fd0-0456-4fe3-a807-921840f30aa7",
+                      "name":  "Get an item",
+                      "alwaysOutputData":  true,
+                      "credentials":  {
+                                          "aws":  {
+                                                      "id":  "neB7cpA9MnnEEp5g",
+                                                      "name":  "AWS (IAM) Prod"
+                                                  }
+                                      }
+                  }
+              ],
+    "connections":  {
+                        "When Executed by Another Workflow":  {
+                                                                  "main":  [
+                                                                               [
+                                                                                   {
+                                                                                       "node":  "Get an item",
+                                                                                       "type":  "main",
+                                                                                       "index":  0
+                                                                                   }
+                                                                               ]
+                                                                           ]
+                                                              },
+                        "If1":  {
+                                    "main":  [
+                                                 [
+                                                     {
+                                                         "node":  "HTTP Request",
+                                                         "type":  "main",
+                                                         "index":  0
+                                                     }
+                                                 ],
+                                                 [
+                                                     {
+                                                         "node":  "Edit Fields",
+                                                         "type":  "main",
+                                                         "index":  0
+                                                     }
+                                                 ]
+                                             ]
+                                },
+                        "HTTP Request":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "node":  "Edit Fields1",
+                                                                  "type":  "main",
+                                                                  "index":  0
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "Get an item":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "node":  "If1",
+                                                                 "type":  "main",
+                                                                 "index":  0
+                                                             }
+                                                         ]
+                                                     ]
+                                        }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "binaryMode":  "separate",
+                     "availableInMCP":  false
+                 },
+    "staticData":  null,
+    "meta":  {
+                 "templateCredsSetupCompleted":  true
+             },
+    "pinData":  {
+                    "When Executed by Another Workflow":  [
+                                                              {
+                                                                  "json":  {
+                                                                               "module":  "03c04cd3-26f2-401b-a2a5-ed9cc6e0d17f",
+                                                                               "phoneNumber":  "573147311511@s.whatsapp.net",
+                                                                               "apikey":  "D682F818F259-4D14-89E4-011AC1BB8D2A"
+                                                                           }
+                                                              }
+                                                          ]
+                },
+    "versionId":  "f4027390-e60a-47da-a6d0-2002e0f50d02",
+    "activeVersionId":  "f4027390-e60a-47da-a6d0-2002e0f50d02",
+    "versionCounter":  33,
+    "triggerCount":  0,
+    "shared":  [
+                   {
+                       "updatedAt":  "2026-03-04T19:49:08.262Z",
+                       "createdAt":  "2026-03-04T19:49:08.262Z",
+                       "role":  "workflow:owner",
+                       "workflowId":  "MdKkoWEZwLYRQ0vS",
+                       "projectId":  "D2B8jYcj2oWbWNjW",
+                       "project":  {
+                                       "updatedAt":  "2026-03-03T21:30:49.196Z",
+                                       "createdAt":  "2026-02-27T23:26:57.527Z",
+                                       "id":  "D2B8jYcj2oWbWNjW",
+                                       "name":  "Hao Tech \u003cgrupohaosas@gmail.com\u003e",
+                                       "type":  "personal",
+                                       "icon":  null,
+                                       "description":  null,
+                                       "creatorId":  "36112817-d7c5-4bcc-b4f6-e76b96ea308e"
+                                   }
+                   }
+               ],
+    "tags":  [
+
+             ],
+    "activeVersion":  {
+                          "updatedAt":  "2026-06-06T16:01:07.000Z",
+                          "createdAt":  "2026-06-06T16:00:54.022Z",
+                          "versionId":  "f4027390-e60a-47da-a6d0-2002e0f50d02",
+                          "workflowId":  "MdKkoWEZwLYRQ0vS",
+                          "nodes":  [
+                                        {
+                                            "parameters":  {
+                                                               "workflowInputs":  {
+                                                                                      "values":  [
+                                                                                                     {
+                                                                                                         "name":  "module"
+                                                                                                     },
+                                                                                                     {
+                                                                                                         "name":  "phoneNumber"
+                                                                                                     },
+                                                                                                     {
+                                                                                                         "name":  "apikey"
+                                                                                                     }
+                                                                                                 ]
+                                                                                  }
+                                                           },
+                                            "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                                            "typeVersion":  1.1,
+                                            "position":  [
+                                                             -864,
+                                                             128
+                                                         ],
+                                            "id":  "e13f95c4-237a-4c2c-ad6a-7712ef0c49eb",
+                                            "name":  "When Executed by Another Workflow"
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "conditions":  {
+                                                                                  "options":  {
+                                                                                                  "caseSensitive":  true,
+                                                                                                  "leftValue":  "",
+                                                                                                  "typeValidation":  "strict",
+                                                                                                  "version":  2
+                                                                                              },
+                                                                                  "conditions":  [
+                                                                                                     {
+                                                                                                         "id":  "db4700b8-f5c1-4c69-84d0-4f8375249632",
+                                                                                                         "leftValue":  "={{ $json.content }}",
+                                                                                                         "rightValue":  "",
+                                                                                                         "operator":  {
+                                                                                                                          "type":  "string",
+                                                                                                                          "operation":  "exists",
+                                                                                                                          "singleValue":  true
+                                                                                                                      }
+                                                                                                     }
+                                                                                                 ],
+                                                                                  "combinator":  "and"
+                                                                              },
+                                                               "options":  {
+
+                                                                           }
+                                                           },
+                                            "type":  "n8n-nodes-base.if",
+                                            "typeVersion":  2.2,
+                                            "position":  [
+                                                             -240,
+                                                             128
+                                                         ],
+                                            "id":  "dad7509e-14f5-4ba7-8f7d-c9a802d664c9",
+                                            "name":  "If1"
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "assignments":  {
+                                                                                   "assignments":  [
+                                                                                                       {
+                                                                                                           "id":  "591abdd5-f5b4-408f-9f00-519498093b4f",
+                                                                                                           "name":  "response",
+                                                                                                           "value":  "no hay video para este módulo",
+                                                                                                           "type":  "string"
+                                                                                                       }
+                                                                                                   ]
+                                                                               },
+                                                               "options":  {
+
+                                                                           }
+                                                           },
+                                            "type":  "n8n-nodes-base.set",
+                                            "typeVersion":  3.4,
+                                            "position":  [
+                                                             32,
+                                                             304
+                                                         ],
+                                            "id":  "78546822-61d6-4731-b2af-4a3a10c1f3a6",
+                                            "name":  "Edit Fields"
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "rules":  {
+                                                                             "values":  [
+                                                                                            {
+                                                                                                "conditions":  {
+                                                                                                                   "options":  {
+                                                                                                                                   "caseSensitive":  true,
+                                                                                                                                   "leftValue":  "",
+                                                                                                                                   "typeValidation":  "strict",
+                                                                                                                                   "version":  2
+                                                                                                                               },
+                                                                                                                   "conditions":  [
+                                                                                                                                      {
+                                                                                                                                          "leftValue":  "={{ $json.Key.split(\".\").last() }}",
+                                                                                                                                          "rightValue":  "mp4",
+                                                                                                                                          "operator":  {
+                                                                                                                                                           "type":  "string",
+                                                                                                                                                           "operation":  "equals"
+                                                                                                                                                       },
+                                                                                                                                          "id":  "f7b536e3-65dd-4774-8dcf-d61daa9e9e25"
+                                                                                                                                      }
+                                                                                                                                  ],
+                                                                                                                   "combinator":  "and"
+                                                                                                               },
+                                                                                                "renameOutput":  true,
+                                                                                                "outputKey":  "mp4"
+                                                                                            }
+                                                                                        ]
+                                                                         },
+                                                               "options":  {
+
+                                                                           }
+                                                           },
+                                            "type":  "n8n-nodes-base.switch",
+                                            "typeVersion":  3.3,
+                                            "position":  [
+                                                             0,
+                                                             0
+                                                         ],
+                                            "id":  "a21f2559-6897-4d93-9ec6-610d9d718eeb",
+                                            "name":  "Switch"
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "method":  "POST",
+                                                               "url":  "http://13.59.170.47:8080/message/sendMedia/NediProd",
+                                                               "sendHeaders":  true,
+                                                               "headerParameters":  {
+                                                                                        "parameters":  [
+                                                                                                           {
+                                                                                                               "name":  "apikey",
+                                                                                                               "value":  "={{ $(\u0027When Executed by Another Workflow\u0027).item.json.apikey }}"
+                                                                                                           }
+                                                                                                       ]
+                                                                                    },
+                                                               "sendBody":  true,
+                                                               "bodyParameters":  {
+                                                                                      "parameters":  [
+                                                                                                         {
+                                                                                                             "name":  "number",
+                                                                                                             "value":  "={{ $(\u0027When Executed by Another Workflow\u0027).item.json.phoneNumber }}"
+                                                                                                         },
+                                                                                                         {
+                                                                                                             "name":  "mediatype",
+                                                                                                             "value":  "video"
+                                                                                                         },
+                                                                                                         {
+                                                                                                             "name":  "fileName",
+                                                                                                             "value":  "=video-{{ $(\u0027When Executed by Another Workflow\u0027).item.json.module }}.mp4"
+                                                                                                         },
+                                                                                                         {
+                                                                                                             "name":  "media",
+                                                                                                             "value":  "={{ $json.content }}"
+                                                                                                         },
+                                                                                                         {
+                                                                                                             "name":  "delay",
+                                                                                                             "value":  "={{2000}}"
+                                                                                                         },
+                                                                                                         {
+                                                                                                             "name":  "caption",
+                                                                                                             "value":  "Vídeo del módulo - espera la primera pregunta ..."
+                                                                                                         },
+                                                                                                         {
+                                                                                                             "name":  "mimetype",
+                                                                                                             "value":  "video/mp4"
+                                                                                                         }
+                                                                                                     ]
+                                                                                  },
+                                                               "options":  {
+                                                                               "timeout":  20000
+                                                                           }
+                                                           },
+                                            "type":  "n8n-nodes-base.httpRequest",
+                                            "typeVersion":  4.2,
+                                            "position":  [
+                                                             416,
+                                                             288
+                                                         ],
+                                            "id":  "8b06697f-a0c0-4956-af12-992411906141",
+                                            "name":  "HTTP Request",
+                                            "onError":  "continueRegularOutput"
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "method":  "POST",
+                                                               "url":  "http://3.129.10.19:8080/message/sendText/THAgent",
+                                                               "sendHeaders":  true,
+                                                               "headerParameters":  {
+                                                                                        "parameters":  [
+                                                                                                           {
+                                                                                                               "name":  "apikey",
+                                                                                                               "value":  "={{ $(\u0027When Executed by Another Workflow\u0027).item.json.apikey }}"
+                                                                                                           }
+                                                                                                       ]
+                                                                                    },
+                                                               "sendBody":  true,
+                                                               "bodyParameters":  {
+                                                                                      "parameters":  [
+                                                                                                         {
+                                                                                                             "name":  "number",
+                                                                                                             "value":  "={{ $(\u0027When Executed by Another Workflow\u0027).item.json.phoneNumber }}"
+                                                                                                         },
+                                                                                                         {
+                                                                                                             "name":  "text",
+                                                                                                             "value":  "ha funcionado https://www.youtube.com/watch?v=GlswfDW8Rd8"
+                                                                                                         },
+                                                                                                         {
+                                                                                                             "name":  "delay",
+                                                                                                             "value":  "={{5000}}"
+                                                                                                         },
+                                                                                                         {
+                                                                                                             "name":  "linkPreview",
+                                                                                                             "value":  "={{Boolean(\"true\")}}"
+                                                                                                         },
+                                                                                                         {
+                                                                                                             "name":  "mentionsEveryOne",
+                                                                                                             "value":  "={{Boolean(\"true\")}}"
+                                                                                                         }
+                                                                                                     ]
+                                                                                  },
+                                                               "options":  {
+
+                                                                           }
+                                                           },
+                                            "type":  "n8n-nodes-base.httpRequest",
+                                            "typeVersion":  4.2,
+                                            "position":  [
+                                                             224,
+                                                             0
+                                                         ],
+                                            "id":  "2235d744-c030-4fb8-8821-cfd19c6e5177",
+                                            "name":  "Send message"
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "assignments":  {
+                                                                                   "assignments":  [
+                                                                                                       {
+                                                                                                           "id":  "591abdd5-f5b4-408f-9f00-519498093b4f",
+                                                                                                           "name":  "response",
+                                                                                                           "value":  "done",
+                                                                                                           "type":  "string"
+                                                                                                       }
+                                                                                                   ]
+                                                                               },
+                                                               "options":  {
+
+                                                                           }
+                                                           },
+                                            "type":  "n8n-nodes-base.set",
+                                            "typeVersion":  3.4,
+                                            "position":  [
+                                                             672,
+                                                             288
+                                                         ],
+                                            "id":  "4d818514-f84d-4d87-8544-a27d7ff43828",
+                                            "name":  "Edit Fields1"
+                                        },
+                                        {
+                                            "parameters":  {
+                                                               "operation":  "get",
+                                                               "tableName":  "CourseModules",
+                                                               "keysUi":  {
+                                                                              "keyValues":  [
+                                                                                                {
+                                                                                                    "key":  "id",
+                                                                                                    "value":  "={{ $(\u0027When Executed by Another Workflow\u0027).item.json.module }}"
+                                                                                                }
+                                                                                            ]
+                                                                          },
+                                                               "additionalFields":  {
+
+                                                                                    }
+                                                           },
+                                            "type":  "n8n-nodes-base.awsDynamoDb",
+                                            "typeVersion":  1,
+                                            "position":  [
+                                                             -464,
+                                                             128
+                                                         ],
+                                            "id":  "cbc36fd0-0456-4fe3-a807-921840f30aa7",
+                                            "name":  "Get an item",
+                                            "alwaysOutputData":  true,
+                                            "credentials":  {
+                                                                "aws":  {
+                                                                            "id":  "neB7cpA9MnnEEp5g",
+                                                                            "name":  "AWS (IAM) Prod"
+                                                                        }
+                                                            }
+                                        }
+                                    ],
+                          "connections":  {
+                                              "When Executed by Another Workflow":  {
+                                                                                        "main":  [
+                                                                                                     [
+                                                                                                         {
+                                                                                                             "node":  "Get an item",
+                                                                                                             "type":  "main",
+                                                                                                             "index":  0
+                                                                                                         }
+                                                                                                     ]
+                                                                                                 ]
+                                                                                    },
+                                              "If1":  {
+                                                          "main":  [
+                                                                       [
+                                                                           {
+                                                                               "node":  "HTTP Request",
+                                                                               "type":  "main",
+                                                                               "index":  0
+                                                                           }
+                                                                       ],
+                                                                       [
+                                                                           {
+                                                                               "node":  "Edit Fields",
+                                                                               "type":  "main",
+                                                                               "index":  0
+                                                                           }
+                                                                       ]
+                                                                   ]
+                                                      },
+                                              "HTTP Request":  {
+                                                                   "main":  [
+                                                                                [
+                                                                                    {
+                                                                                        "node":  "Edit Fields1",
+                                                                                        "type":  "main",
+                                                                                        "index":  0
+                                                                                    }
+                                                                                ]
+                                                                            ]
+                                                               },
+                                              "Get an item":  {
+                                                                  "main":  [
+                                                                               [
+                                                                                   {
+                                                                                       "node":  "If1",
+                                                                                       "type":  "main",
+                                                                                       "index":  0
+                                                                                   }
+                                                                               ]
+                                                                           ]
+                                                              }
+                                          },
+                          "authors":  "Hao Tech",
+                          "name":  "Version f4027390",
+                          "description":  "",
+                          "autosaved":  true,
+                          "workflowPublishHistory":  [
+                                                         {
+                                                             "createdAt":  "2026-06-06T16:01:07.795Z",
+                                                             "id":  306,
+                                                             "workflowId":  "MdKkoWEZwLYRQ0vS",
+                                                             "versionId":  "f4027390-e60a-47da-a6d0-2002e0f50d02",
+                                                             "event":  "activated",
+                                                             "userId":  "36112817-d7c5-4bcc-b4f6-e76b96ea308e"
+                                                         }
+                                                     ]
+                      }
+}
