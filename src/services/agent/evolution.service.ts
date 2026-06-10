@@ -23,6 +23,22 @@ export class EvolutionService {
     return (cfg.serverUrl || '').replace(/\/+$/, '');
   }
 
+  /**
+   * Muestra "escribiendo..." en WhatsApp (Evolution sendPresence / composing).
+   * `delay` = cuánto dura cada pulso en ms; no bloquea el procesamiento del agente.
+   */
+  async sendTyping(cfg: EvolutionConfig, to: string, delayMs = 3000): Promise<void> {
+    try {
+      await this.post(cfg, `/chat/sendPresence/${cfg.instance}`, {
+        number: to,
+        presence: 'composing',
+        delay: delayMs,
+      });
+    } catch (err: any) {
+      this.logger.debug(`sendTyping omitido: ${err?.message || err}`);
+    }
+  }
+
   /** Envia un mensaje de texto al estudiante. */
   async sendText(cfg: EvolutionConfig, to: string, text: string): Promise<void> {
     await this.post(cfg, `/message/sendText/${cfg.instance}`, {

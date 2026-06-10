@@ -27,6 +27,11 @@ export interface AgentState {
   offeredNextModuleId?: string;
   /** Ultimo modulo cuyo video/audio intro ya se envio (evita omitir intro al reanudar en pregunta 0). */
   introShownForModuleId?: string;
+  /**
+   * Tras validar una respuesta, el estudiante elige explicacion o siguiente pregunta.
+   * Evita que "1"/"2" o "siguiente" se interpreten como respuesta a la pregunta anterior.
+   */
+  awaitingPostAnswerAction?: boolean;
   updatedAt: string;
 }
 

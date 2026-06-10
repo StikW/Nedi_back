@@ -1,4 +1,5 @@
-import { IsString, IsNotEmpty, IsPhoneNumber, IsOptional } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, Matches } from 'class-validator';
+import { E164_PHONE_REGEX, E164_PHONE_VALIDATION_MESSAGE } from './phone-validation';
 
 export class CreateStudentDto {
   @IsString()
@@ -7,7 +8,7 @@ export class CreateStudentDto {
 
   @IsString()
   @IsNotEmpty()
-  @IsPhoneNumber() // Acepta cualquier número internacional válido
+  @Matches(E164_PHONE_REGEX, { message: E164_PHONE_VALIDATION_MESSAGE })
   phoneNumber: string;
 
   @IsString()
@@ -22,7 +23,7 @@ export class UpdateStudentDto {
 
   @IsString()
   @IsOptional()
-  @IsPhoneNumber() // Acepta cualquier número internacional válido
+  @Matches(E164_PHONE_REGEX, { message: E164_PHONE_VALIDATION_MESSAGE })
   phoneNumber?: string;
 }
 
@@ -43,6 +44,7 @@ export class ImportStudentDto {
 
   @IsString()
   @IsNotEmpty()
+  @Matches(E164_PHONE_REGEX, { message: E164_PHONE_VALIDATION_MESSAGE })
   phoneNumber: string;
 }
 

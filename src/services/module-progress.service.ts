@@ -133,4 +133,62 @@ export class ModuleProgressService {
 
     return (result.Items || []) as ModuleProgress[];
   }
+
+  /**
+   * Elimina todos los registros de progreso de módulos de un estudiante en un curso.
+   */
+  async deleteByPhoneAndCourse(phoneNumber: string, courseId: string): Promise<number> {
+    const normalizedPhone = this.normalizePhoneNumber(phoneNumber);
+    const records: ModuleProgress[] = [];
+    let exclusiveStartKey: Record<string, unknown> | undefined;
+
+    do {
+      const result = await this.dynamoClient.send(
+        new ScanCommand({
+          TableName: MODULE_PROGRESS_TABLE,
+          FilterExpression: 'phoneNumber = :phoneNumber AND courseId = :courseId',
+          ExpressionAttributeValues: {
+            ':phoneNumber': normalizedPhone,
+            ':courseId': courseId,
+          },
+          ExclusiveStartKey: exclusiveStartKey,
+        }),
+      );
+
+      records.push(...((result.Items || []) as ModuleProgress[]));
+      exclusiveStartKey = result.LastEvaluatedKey;
+    } while (exclusiveStartKey);
+
+    if (records.length === 0) {
+      return 0;
+    }
+
+    return this.batchDeleteModuleProgress(records);
+  }
+
+  private async batchDeleteModuleProgress(records: ModuleProgress[]): Promise<number> {
+    const deletePromises: Promise<unknown>[] = [];
+
+    for (let i = 0; i < records.length; i += 25) {
+      const batch = records.slice(i, i + 25);
+      const deleteRequests = batch.map((record) => ({
+        DeleteRequest: {
+          Key: { id: record.id },
+        },
+      }));
+
+      deletePromises.push(
+        this.dynamoClient.send(
+          new BatchWriteCommand({
+            RequestItems: {
+              [MODULE_PROGRESS_TABLE]: deleteRequests,
+            },
+          }),
+        ),
+      );
+    }
+
+    await Promise.all(deletePromises);
+    return records.length;
+  }
 }

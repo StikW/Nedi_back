@@ -77,8 +77,16 @@ export class AgentsService {
       return 'AI_Preguntas';
     }
 
+    if (ctx.state.awaitingPostAnswerAction) {
+      const postAnswerRoute = this.classifyPostAnswerAction(ctx.message);
+      if (postAnswerRoute) return postAnswerRoute;
+    }
+
     const context = [
       `Estado de flujo actual: ${ctx.state.flujo}`,
+      ctx.state.awaitingPostAnswerAction
+        ? 'El estudiante acaba de recibir retroalimentación de su respuesta y debe elegir si quiere más explicación o la siguiente pregunta. No trates su mensaje como una nueva respuesta a la pregunta anterior.'
+        : '',
       ctx.state.lastQuestion ? `Última pregunta mostrada: ${ctx.state.lastQuestion}` : 'No hay pregunta activa.',
       ctx.state.offeredNextModuleId
         ? 'Se ofreció al estudiante continuar con el siguiente módulo del curso.'
@@ -167,7 +175,12 @@ export class AgentsService {
       ctx.tenant.evolution.instance,
       ctx.phoneNumber,
       ctx.tenant.instructor.id,
-      { flujo: 'preguntas', moduleId, offeredNextModuleId: undefined },
+      {
+        flujo: 'preguntas',
+        moduleId,
+        offeredNextModuleId: undefined,
+        awaitingPostAnswerAction: false,
+      },
     );
 
     // Obtener o generar banco de preguntas
@@ -198,6 +211,7 @@ export class AgentsService {
           lastQuestion: undefined,
           offeredNextModuleId: nextModule?.id,
           introShownForModuleId: undefined,
+          awaitingPostAnswerAction: false,
         },
       );
       return reply;
@@ -212,23 +226,17 @@ export class AgentsService {
       ctx.state.introShownForModuleId !== moduleId &&
       (moduleId !== previousModuleId || current.index === 0);
     if (shouldSendIntro) {
-      const introSent = await this.sendModuleIntro(ctx, moduleForIntro);
-      if (introSent) {
-        ctx.state = await this.agentState.upsertState(
-          ctx.tenant.evolution.instance,
-          ctx.phoneNumber,
-          ctx.tenant.instructor.id,
-          { introShownForModuleId: moduleId },
-        );
-      }
+      // Video en paralelo: no bloquea audio-resumen ni texto de la pregunta
+      this.fireModuleIntroInBackground(ctx, moduleForIntro, moduleId);
     }
 
     const questionText = this.formatQuestion(current.question, current.index, current.total);
 
-    // AI Agent Resumen -> TTS -> audio, luego la pregunta en texto (flujo n8n)
-    await this.sendResumenAudio(ctx, questionText, courseId, moduleId);
-
     await this.refreshLastQuestion(ctx, courseId, moduleId, questionText);
+
+    // Resumen TTS en paralelo; el texto de la pregunta lo envía el orquestador al retornar
+    this.fireResumenAudioInBackground(ctx, questionText, courseId, moduleId);
+
     return questionText;
   }
 
@@ -265,6 +273,12 @@ export class AgentsService {
     if (courseId && moduleId) {
       await this.agentState.advanceQuestion(ctx.phoneNumber, moduleId, courseId);
     }
+    ctx.state = await this.agentState.upsertState(
+      ctx.tenant.evolution.instance,
+      ctx.phoneNumber,
+      ctx.tenant.instructor.id,
+      { awaitingPostAnswerAction: true },
+    );
     return answer;
   }
 
@@ -303,6 +317,42 @@ export class AgentsService {
   // ===================================================================
   //  Helpers
   // ===================================================================
+
+  /** Dispara el video/intro del modulo sin bloquear el hilo principal. */
+  private fireModuleIntroInBackground(
+    ctx: RuntimeContext,
+    module: CourseModule | null,
+    moduleId: string,
+  ): void {
+    void this.sendModuleIntro(ctx, module)
+      .then(async (introSent) => {
+        if (introSent) {
+          await this.agentState.upsertState(
+            ctx.tenant.evolution.instance,
+            ctx.phoneNumber,
+            ctx.tenant.instructor.id,
+            { introShownForModuleId: moduleId },
+          );
+        }
+      })
+      .catch((err: any) =>
+        this.logger.warn(
+          `Intro en background falló moduleId=${moduleId}: ${err?.message || err}`,
+        ),
+      );
+  }
+
+  /** Dispara el audio-resumen sin bloquear el envío del texto de la pregunta. */
+  private fireResumenAudioInBackground(
+    ctx: RuntimeContext,
+    questionText: string,
+    courseId: string,
+    moduleId: string,
+  ): void {
+    void this.sendResumenAudio(ctx, questionText, courseId, moduleId).catch((err: any) =>
+      this.logger.warn(`Resumen audio en background falló: ${err?.message || err}`),
+    );
+  }
 
   /**
    * Intro del modulo (sub-workflow sendVideo en n8n):
@@ -457,6 +507,36 @@ export class AgentsService {
       `El siguiente módulo es *${nextModule.title}*.`,
       '¿Quieres continuar con él? Responde *sí* o *siguiente* para empezar.',
     ].join('\n');
+  }
+
+  /**
+   * Tras la retroalimentación de una respuesta, el estudiante elige explicar o continuar.
+   * Retorna null si el mensaje no es claramente una de esas acciones.
+   */
+  private classifyPostAnswerAction(message: string): IntentRoute | null {
+    const trimmed = message.trim();
+    if (/^(1|2)$/.test(trimmed)) {
+      return trimmed === '1' ? 'AI_Explicar' : 'AI_Preguntas';
+    }
+    if (this.wantsPostAnswerExplain(message)) return 'AI_Explicar';
+    if (this.wantsPostAnswerContinue(message)) return 'AI_Preguntas';
+    return null;
+  }
+
+  private wantsPostAnswerExplain(message: string): boolean {
+    const t = message.trim().toLowerCase().normalize('NFD').replace(/\p{M}/gu, '');
+    if (/^(explicar|explica|explicame|explicación|explicacion)$/.test(t)) return true;
+    return /\b(explicar|explicame|explicacion|explicación|mas a fondo|más a fondo|cuentame mas|cuéntame más|profundizar|no entendi|no entendí|no comprendi|no comprendí|aclarar|duda|por que|porqué|porque)\b/.test(
+      t,
+    );
+  }
+
+  private wantsPostAnswerContinue(message: string): boolean {
+    const t = message.trim().toLowerCase().normalize('NFD').replace(/\p{M}/gu, '');
+    if (/^(si|sí|ok|dale|claro|listo|ya|vamos|yes|yep)$/.test(t)) return true;
+    return /\b(siguiente|continuar|continua|adelante|seguir|otra pregunta|siguiente pregunta|empecemos|comencemos)\b/.test(
+      t,
+    );
   }
 
   /** Afirmaciones tras ofrecer el siguiente módulo (evita depender solo del LLM clasificador). */

@@ -76,6 +76,9 @@ export class AgentStateService {
       introShownForModuleId: 'introShownForModuleId' in patch
         ? patch.introShownForModuleId
         : current?.introShownForModuleId,
+      awaitingPostAnswerAction: 'awaitingPostAnswerAction' in patch
+        ? patch.awaitingPostAnswerAction
+        : current?.awaitingPostAnswerAction,
       updatedAt: new Date().toISOString(),
     };
     try {

@@ -1,6 +1,11 @@
 import { Inject, Injectable, Logger, HttpException, HttpStatus, forwardRef } from '@nestjs/common';
 import { Student, STUDENTS_TABLE } from '../models/student.entity';
 import { CreateStudentDto, UpdateStudentDto, ImportStudentDto, ImportStudentsResponseDto } from '../models/student.dto';
+import {
+  E164_PHONE_VALIDATION_MESSAGE,
+  hasPhoneWhitespace,
+  isValidE164Phone,
+} from '../models/phone-validation';
 import { DynamoDBDocumentClient, GetCommand, PutCommand, QueryCommand, DeleteCommand, BatchWriteCommand, ScanCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { PaginationDto, PaginatedResponseDto } from '../models/pagination.dto';
 import { StudentStatsDto, StudentCourseProgressDto } from '../models/student-stats.dto';
@@ -8,6 +13,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { CourseService } from './course.service';
 import { CourseModuleService } from './course-module.service';
 import { ModuleProgressService } from './module-progress.service';
+import { StudentProgressCleanupService } from './student-progress-cleanup.service';
 import { ReminderService } from './reminder.service';
 import * as csv from 'csv-parser';
 import { Readable } from 'stream';
@@ -25,6 +31,8 @@ export class StudentService {
     private readonly courseModuleService: CourseModuleService,
     @Inject(forwardRef(() => ModuleProgressService))
     private readonly moduleProgressService: ModuleProgressService,
+    @Inject(forwardRef(() => StudentProgressCleanupService))
+    private readonly studentProgressCleanupService: StudentProgressCleanupService,
     @Inject(forwardRef(() => ReminderService))
     private readonly reminderService: ReminderService,
   ) {}
@@ -279,13 +287,29 @@ export class StudentService {
       );
     }
 
-    // Eliminar el estudiante
+    await this.purgeStudentEnrollmentData(existingStudent);
+
     await this.dynamoClient.send(new DeleteCommand({
       TableName: STUDENTS_TABLE,
       Key: { id }
     }));
 
     return true;
+  }
+
+  /**
+   * Borra progreso de módulos, índice de preguntas y estado del agente
+   * para que una nueva inscripción en el mismo curso empiece desde cero.
+   */
+  private async purgeStudentEnrollmentData(student: Student): Promise<void> {
+    const modules = await this.courseModuleService.findAllByCourse(student.courseId);
+    const moduleIds = modules.map((m) => m.id);
+
+    await this.studentProgressCleanupService.purgeEnrollment(
+      student.phoneNumber,
+      student.courseId,
+      moduleIds,
+    );
   }
 
   async findByPhoneNumber(phoneNumber: string): Promise<Student[]> {
@@ -402,9 +426,20 @@ export class StudentService {
     }));
 
     const students = (result.Items || []) as Student[];
-    
+
     if (students.length === 0) {
       return 0;
+    }
+
+    const modules = await this.courseModuleService.findAllByCourse(courseId);
+    const moduleIds = modules.map((m) => m.id);
+
+    for (const student of students) {
+      await this.studentProgressCleanupService.purgeEnrollment(
+        student.phoneNumber,
+        courseId,
+        moduleIds,
+      );
     }
 
     // Eliminar en lotes de 25 (límite de DynamoDB BatchWrite)
@@ -473,14 +508,23 @@ export class StudentService {
               return;
             }
 
-            // Validar formato del teléfono
-            const phoneNumber = row.phonenumber.trim();
-            if (!phoneNumber.match(/^\+?[1-9]\d{1,14}$/)) {
+            const phoneNumber = String(row.phonenumber ?? '');
+            if (hasPhoneWhitespace(phoneNumber)) {
               errors.push({
                 row: students.length + errors.length + 1,
                 name: row.name.trim(),
                 phoneNumber,
-                error: 'Formato de teléfono inválido'
+                error: 'El teléfono no puede contener espacios',
+              });
+              return;
+            }
+
+            if (!isValidE164Phone(phoneNumber)) {
+              errors.push({
+                row: students.length + errors.length + 1,
+                name: row.name.trim(),
+                phoneNumber,
+                error: E164_PHONE_VALIDATION_MESSAGE,
               });
               return;
             }

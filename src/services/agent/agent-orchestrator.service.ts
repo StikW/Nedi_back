@@ -121,31 +121,29 @@ export class AgentOrchestratorService {
     let reply = '';
 
     try {
-      if (sessionExpired) {
-        this.logger.log(
-          `[${instance}] ${phoneNumber} -> AI_ConversacionInicial (${welcomeReason}, timeout=${sessionTimeoutMin}m)`,
-        );
-        reply = await this.agents.runConversacionInicial(ctx);
-      } else {
+      reply = await this.runWithTypingIndicator(tenant, recipientJid || phoneNumber, async () => {
+        if (sessionExpired) {
+          this.logger.log(
+            `[${instance}] ${phoneNumber} -> AI_ConversacionInicial (${welcomeReason}, timeout=${sessionTimeoutMin}m)`,
+          );
+          return this.agents.runConversacionInicial(ctx);
+        }
+
         const route = await this.agents.classify(ctx);
-        this.logger.log(`[${instance}] ${phoneNumber} -> ${route} (flujo=${state.flujo})`);
+        this.logger.log(`[${instance}] ${phoneNumber} -> ${route} (flujo=${ctx.state.flujo})`);
 
         switch (route) {
           case 'AI_Preguntas':
-            reply = await this.agents.runPreguntas(ctx);
-            break;
+            return this.agents.runPreguntas(ctx);
           case 'AI_Respuestas':
-            reply = await this.agents.runRespuestas(ctx);
-            break;
+            return this.agents.runRespuestas(ctx);
           case 'AI_Explicar':
-            reply = await this.agents.runExplicar(ctx);
-            break;
+            return this.agents.runExplicar(ctx);
           case 'AI_Conversacion':
           default:
-            reply = await this.agents.runConversacion(ctx);
-            break;
+            return this.agents.runConversacion(ctx);
         }
-      }
+      });
     } catch (err: any) {
       this.logger.error(`Error en agente: ${err?.message || err}`);
       reply = 'Disculpa, tuve un inconveniente procesando tu mensaje. ¿Puedes intentarlo de nuevo?';
@@ -160,6 +158,30 @@ export class AgentOrchestratorService {
     state = await this.agentState.upsertState(instance, phoneNumber, tenant.instructor.id, {
       lastSessionAt: new Date().toISOString(),
     });
+  }
+
+  /**
+   * Mantiene el indicador "escribiendo..." mientras el agente trabaja.
+   * Pulsos cortos (sin espera artificial extra); se detiene al enviar la respuesta.
+   */
+  private async runWithTypingIndicator<T>(
+    tenant: TenantContext,
+    to: string,
+    work: () => Promise<T>,
+  ): Promise<T> {
+    const pulseMs = this.configService.get<number>('AGENT_TYPING_PULSE_MS') ?? 2500;
+    const delayMs = this.configService.get<number>('AGENT_TYPING_DELAY_MS') ?? 3000;
+
+    void this.evolution.sendTyping(tenant.evolution, to, delayMs);
+    const timer = setInterval(() => {
+      void this.evolution.sendTyping(tenant.evolution, to, delayMs);
+    }, pulseMs);
+
+    try {
+      return await work();
+    } finally {
+      clearInterval(timer);
+    }
   }
 
   /** Envia la respuesta al estudiante por Evolution. */
