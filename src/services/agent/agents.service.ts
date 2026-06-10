@@ -137,10 +137,16 @@ export class AgentsService {
     const titles = JSON.stringify(courses.map((c) => c.title));
     const withIds = JSON.stringify(courses.map((c) => ({ id: c.id, titulo: c.title })));
 
-    const system = CONVERSACION_PROMPT.replace('{{coursesTitles}}', titles).replace(
-      '{{coursesWithIds}}',
-      withIds,
-    );
+    const introAlreadyDone = ctx.state.nediIntroShown || ctx.history.length > 0;
+    const introGuard = introAlreadyDone
+      ? '\n\n## Contexto de sesión\nEl estudiante ya recibió el mensaje de bienvenida donde Nedi se presentó. NO vuelvas a presentarte ni saludes con "Soy Nedi". Ve directo al contenido útil.'
+      : '';
+
+    const system =
+      CONVERSACION_PROMPT.replace('{{coursesTitles}}', titles).replace(
+        '{{coursesWithIds}}',
+        withIds,
+      ) + introGuard;
 
     const tools: AgentTool[] = [
       {

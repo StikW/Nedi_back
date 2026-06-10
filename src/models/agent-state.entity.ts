@@ -40,6 +40,11 @@ export interface AgentState {
    * antes de mandar el audio-resumen y la primera pregunta.
    */
   awaitingModuleStartConfirmation?: boolean;
+  /**
+   * True tras el mensaje de bienvenida (conversacion inicial). Evita que otros
+   * agentes vuelvan a presentarse como Nedi en la misma sesion activa.
+   */
+  nediIntroShown?: boolean;
   updatedAt: string;
 }
 

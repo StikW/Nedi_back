@@ -105,6 +105,7 @@ export class AgentOrchestratorService {
         state = await this.agentState.upsertState(instance, phoneNumber, state.instructorId, {
           awaitingModuleStartConfirmation: false,
           introShownForModuleId: undefined,
+          nediIntroShown: false,
         });
       }
     }
@@ -166,6 +167,7 @@ export class AgentOrchestratorService {
     this.memory.append(instance, phoneNumber, message, reply);
     state = await this.agentState.upsertState(instance, phoneNumber, tenant.instructor.id, {
       lastSessionAt: new Date().toISOString(),
+      ...(sessionExpired ? { nediIntroShown: true } : {}),
     });
   }
 

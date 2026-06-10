@@ -82,6 +82,7 @@ export class AgentStateService {
       awaitingModuleStartConfirmation: 'awaitingModuleStartConfirmation' in patch
         ? patch.awaitingModuleStartConfirmation
         : current?.awaitingModuleStartConfirmation,
+      nediIntroShown: 'nediIntroShown' in patch ? patch.nediIntroShown : current?.nediIntroShown,
       updatedAt: new Date().toISOString(),
     };
     try {
