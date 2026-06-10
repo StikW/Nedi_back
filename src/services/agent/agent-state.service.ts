@@ -79,6 +79,9 @@ export class AgentStateService {
       awaitingPostAnswerAction: 'awaitingPostAnswerAction' in patch
         ? patch.awaitingPostAnswerAction
         : current?.awaitingPostAnswerAction,
+      awaitingModuleStartConfirmation: 'awaitingModuleStartConfirmation' in patch
+        ? patch.awaitingModuleStartConfirmation
+        : current?.awaitingModuleStartConfirmation,
       updatedAt: new Date().toISOString(),
     };
     try {

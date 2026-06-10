@@ -77,6 +77,10 @@ export class AgentsService {
       return 'AI_Preguntas';
     }
 
+    if (ctx.state.awaitingModuleStartConfirmation && this.wantsToStartModuleQuestions(ctx.message)) {
+      return 'AI_Preguntas';
+    }
+
     if (ctx.state.awaitingPostAnswerAction) {
       const postAnswerRoute = this.classifyPostAnswerAction(ctx.message);
       if (postAnswerRoute) return postAnswerRoute;
@@ -86,6 +90,9 @@ export class AgentsService {
       `Estado de flujo actual: ${ctx.state.flujo}`,
       ctx.state.awaitingPostAnswerAction
         ? 'El estudiante acaba de recibir retroalimentación de su respuesta y debe elegir si quiere más explicación o la siguiente pregunta. No trates su mensaje como una nueva respuesta a la pregunta anterior.'
+        : '',
+      ctx.state.awaitingModuleStartConfirmation
+        ? 'Ya se envió el video intro del módulo. El estudiante debe confirmar (listo/comenzar/empezar) para recibir la primera pregunta.'
         : '',
       ctx.state.lastQuestion ? `Última pregunta mostrada: ${ctx.state.lastQuestion}` : 'No hay pregunta activa.',
       ctx.state.offeredNextModuleId
@@ -212,6 +219,7 @@ export class AgentsService {
           offeredNextModuleId: nextModule?.id,
           introShownForModuleId: undefined,
           awaitingPostAnswerAction: false,
+          awaitingModuleStartConfirmation: false,
         },
       );
       return reply;
@@ -221,22 +229,52 @@ export class AgentsService {
       return 'No hay preguntas disponibles en este momento.';
     }
 
-    const moduleForIntro = activeModule || (await this.courseModuleService.findOne(moduleId));
-    const shouldSendIntro =
-      ctx.state.introShownForModuleId !== moduleId &&
-      (moduleId !== previousModuleId || current.index === 0);
-    if (shouldSendIntro) {
-      // Video en paralelo: no bloquea audio-resumen ni texto de la pregunta
-      this.fireModuleIntroInBackground(ctx, moduleForIntro, moduleId);
+    if (ctx.state.awaitingModuleStartConfirmation) {
+      if (!this.wantsToStartModuleQuestions(ctx.message)) {
+        return (
+          'Cuando hayas revisado el video con calma, escribe *listo*, *comenzar* o *empezar* ' +
+          'y te envío el audio introductorio junto con la primera pregunta.'
+        );
+      }
+
+      ctx.state = await this.agentState.upsertState(
+        ctx.tenant.evolution.instance,
+        ctx.phoneNumber,
+        ctx.tenant.instructor.id,
+        { awaitingModuleStartConfirmation: false },
+      );
+    } else {
+      const moduleForIntro = activeModule || (await this.courseModuleService.findOne(moduleId));
+      const shouldSendIntro =
+        ctx.state.introShownForModuleId !== moduleId &&
+        (moduleId !== previousModuleId || current.index === 0);
+
+      if (shouldSendIntro) {
+        const introSent = await this.sendModuleIntro(ctx, moduleForIntro);
+        if (introSent) {
+          ctx.state = await this.agentState.upsertState(
+            ctx.tenant.evolution.instance,
+            ctx.phoneNumber,
+            ctx.tenant.instructor.id,
+            {
+              introShownForModuleId: moduleId,
+              awaitingModuleStartConfirmation: true,
+            },
+          );
+          return (
+            'Perfecto. Revisa el video con calma. Cuando quieras empezar con las preguntas, ' +
+            'escribe *listo*, *comenzar* o *empezar*.'
+          );
+        }
+      }
     }
 
     const questionText = this.formatQuestion(current.question, current.index, current.total);
 
+    // Agente Resumen -> TTS -> audio, luego la pregunta en texto (flujo n8n)
+    await this.sendResumenAudio(ctx, questionText, courseId, moduleId);
+
     await this.refreshLastQuestion(ctx, courseId, moduleId, questionText);
-
-    // Resumen TTS en paralelo; el texto de la pregunta lo envía el orquestador al retornar
-    this.fireResumenAudioInBackground(ctx, questionText, courseId, moduleId);
-
     return questionText;
   }
 
@@ -318,42 +356,6 @@ export class AgentsService {
   //  Helpers
   // ===================================================================
 
-  /** Dispara el video/intro del modulo sin bloquear el hilo principal. */
-  private fireModuleIntroInBackground(
-    ctx: RuntimeContext,
-    module: CourseModule | null,
-    moduleId: string,
-  ): void {
-    void this.sendModuleIntro(ctx, module)
-      .then(async (introSent) => {
-        if (introSent) {
-          await this.agentState.upsertState(
-            ctx.tenant.evolution.instance,
-            ctx.phoneNumber,
-            ctx.tenant.instructor.id,
-            { introShownForModuleId: moduleId },
-          );
-        }
-      })
-      .catch((err: any) =>
-        this.logger.warn(
-          `Intro en background falló moduleId=${moduleId}: ${err?.message || err}`,
-        ),
-      );
-  }
-
-  /** Dispara el audio-resumen sin bloquear el envío del texto de la pregunta. */
-  private fireResumenAudioInBackground(
-    ctx: RuntimeContext,
-    questionText: string,
-    courseId: string,
-    moduleId: string,
-  ): void {
-    void this.sendResumenAudio(ctx, questionText, courseId, moduleId).catch((err: any) =>
-      this.logger.warn(`Resumen audio en background falló: ${err?.message || err}`),
-    );
-  }
-
   /**
    * Intro del modulo (sub-workflow sendVideo en n8n):
    * Si `content` existe, se envia como video (Drive, Catbox, S3, etc.).
@@ -419,7 +421,7 @@ export class AgentsService {
 
     lines.push(
       '',
-      'Aquí tienes el video introductorio de este módulo. Revísalo con calma y, cuando estés listo, te envío la primera pregunta para poner en práctica lo aprendido.',
+      'Aquí tienes el video introductorio de este módulo. Revísalo con calma y, cuando quieras empezar con las preguntas, escribe *listo*, *comenzar* o *empezar*.',
     );
     return lines.join('\n');
   }
@@ -540,12 +542,18 @@ export class AgentsService {
   }
 
   /** Afirmaciones tras ofrecer el siguiente módulo (evita depender solo del LLM clasificador). */
-  private wantsToContinueNextModule(message: string): boolean {
+  private wantsToStartModuleQuestions(message: string): boolean {
     const t = message.trim().toLowerCase().normalize('NFD').replace(/\p{M}/gu, '');
-    if (/^(si|sí|ok|dale|claro|por supuesto|adelante|continuar|continua|siguiente|empecemos|comencemos|vamos|yes|yep)\b/.test(t)) {
+    if (/^(si|sí|ok|dale|claro|listo|ya|vamos|adelante|empecemos|comencemos|yes|yep)$/.test(t)) {
       return true;
     }
-    return /\b(siguiente|continuar|empezar|comenzar)\b/.test(t);
+    return /\b(listo|comenzar|comencemos|empezar|empecemos|iniciar|quiero empezar|empezar preguntas|primera pregunta|vamos)\b/.test(
+      t,
+    );
+  }
+
+  private wantsToContinueNextModule(message: string): boolean {
+    return this.wantsToStartModuleQuestions(message);
   }
 
   private formatQuestion(question: ModuleQuestion, index: number, total: number): string {

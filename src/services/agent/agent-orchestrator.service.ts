@@ -161,27 +161,16 @@ export class AgentOrchestratorService {
   }
 
   /**
-   * Mantiene el indicador "escribiendo..." mientras el agente trabaja.
-   * Pulsos cortos (sin espera artificial extra); se detiene al enviar la respuesta.
+   * Muestra "escribiendo..." una sola vez al iniciar el procesamiento del agente.
    */
   private async runWithTypingIndicator<T>(
     tenant: TenantContext,
     to: string,
     work: () => Promise<T>,
   ): Promise<T> {
-    const pulseMs = this.configService.get<number>('AGENT_TYPING_PULSE_MS') ?? 2500;
     const delayMs = this.configService.get<number>('AGENT_TYPING_DELAY_MS') ?? 3000;
-
     void this.evolution.sendTyping(tenant.evolution, to, delayMs);
-    const timer = setInterval(() => {
-      void this.evolution.sendTyping(tenant.evolution, to, delayMs);
-    }, pulseMs);
-
-    try {
-      return await work();
-    } finally {
-      clearInterval(timer);
-    }
+    return work();
   }
 
   /** Envia la respuesta al estudiante por Evolution. */

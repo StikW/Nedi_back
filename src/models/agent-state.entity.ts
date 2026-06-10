@@ -32,6 +32,11 @@ export interface AgentState {
    * Evita que "1"/"2" o "siguiente" se interpreten como respuesta a la pregunta anterior.
    */
   awaitingPostAnswerAction?: boolean;
+  /**
+   * Tras enviar el video intro del modulo, espera confirmacion del estudiante
+   * antes de mandar el audio-resumen y la primera pregunta.
+   */
+  awaitingModuleStartConfirmation?: boolean;
   updatedAt: string;
 }
 
