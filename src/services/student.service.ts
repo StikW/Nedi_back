@@ -316,6 +316,40 @@ export class StudentService {
     );
   }
 
+  /**
+   * Incrementa loginCount en cada matrícula del teléfono con el instructor indicado.
+   * Se usa al iniciar sesión con Nedi (primer mensaje o tras timeout de inactividad).
+   */
+  async incrementLoginCount(phoneNumber: string, instructorId: string): Promise<number> {
+    const normalizedPhone = this.normalizePhoneNumber(phoneNumber);
+    const students = await this.findByPhoneNumber(normalizedPhone);
+    const enrolled = students.filter((s) => s.instructorId === instructorId);
+
+    if (enrolled.length === 0) {
+      return 0;
+    }
+
+    const now = new Date().toISOString();
+    await Promise.all(
+      enrolled.map((student) =>
+        this.dynamoClient.send(
+          new UpdateCommand({
+            TableName: STUDENTS_TABLE,
+            Key: { id: student.id },
+            UpdateExpression: 'SET loginCount = if_not_exists(loginCount, :zero) + :one, updatedAt = :now',
+            ExpressionAttributeValues: {
+              ':zero': 0,
+              ':one': 1,
+              ':now': now,
+            },
+          }),
+        ),
+      ),
+    );
+
+    return enrolled.length;
+  }
+
   async findByPhoneNumber(phoneNumber: string): Promise<Student[]> {
     // Normalizar el teléfono de búsqueda
     const normalizedPhone = this.normalizePhoneNumber(phoneNumber);

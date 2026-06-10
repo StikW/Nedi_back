@@ -62,11 +62,32 @@ export class AgentsService {
   // ===================================================================
 
   async runConversacionInicial(ctx: RuntimeContext): Promise<string> {
+    await this.recordWelcomeSession(ctx);
+
     return this.llm.runAgent({
       system: CONVERSACION_INICIAL_PROMPT,
       userMessage: ctx.message,
       history: [],
     });
+  }
+
+  /** Suma loginCount al entrar al agente de bienvenida (primer contacto o sesión expirada). */
+  private async recordWelcomeSession(ctx: RuntimeContext): Promise<void> {
+    try {
+      const updated = await this.studentService.incrementLoginCount(
+        ctx.phoneNumber,
+        ctx.tenant.instructor.id,
+      );
+      if (updated > 0) {
+        this.logger.log(
+          `loginCount +1 para ${ctx.phoneNumber} (${updated} matrícula(s), instructor ${ctx.tenant.instructor.id})`,
+        );
+      }
+    } catch (err: any) {
+      this.logger.warn(
+        `No se pudo incrementar loginCount para ${ctx.phoneNumber}: ${err?.message || err}`,
+      );
+    }
   }
 
   async classify(ctx: RuntimeContext): Promise<IntentRoute> {
@@ -437,9 +458,21 @@ export class AgentsService {
 
   private shortModuleTeaser(description?: string): string {
     if (!description?.trim()) return '';
+
     const clean = description.trim().replace(/\s+/g, ' ');
-    const firstSentence = clean.split(/(?<=[.!?])\s+/)[0] || clean;
-    return firstSentence.length > 140 ? `${firstSentence.slice(0, 137)}...` : firstSentence;
+    const parts = clean.split(/(?<=[.!?])\s+/).filter(Boolean);
+    const candidates = parts.length > 0 ? parts : [clean];
+
+    for (const raw of candidates) {
+      let sentence = raw.trim().replace(/^\d+\.\s*/, '').trim();
+      // Evita viñetas sueltas tipo "1." que quedan al parsear listas numeradas.
+      if (!sentence || /^\d+\.?$/.test(sentence) || sentence.length < 4) {
+        continue;
+      }
+      return sentence.length > 140 ? `${sentence.slice(0, 137)}...` : sentence;
+    }
+
+    return '';
   }
 
   private async resolveModuleContentUrl(module: CourseModule): Promise<string | null> {
