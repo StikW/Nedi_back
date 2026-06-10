@@ -58,6 +58,11 @@ export class WhatsAppService {
 
   constructor(private readonly configService: ConfigService) {}
 
+  /** Lee variable directa de process.env o fallback del namespace `env.*` de Nest. */
+  private getEnv(key: string, namespacedKey: string): string | undefined {
+    return this.configService.get<string>(key) ?? this.configService.get<string>(namespacedKey);
+  }
+
   /**
    * Envía un template aprobado en Meta a un número específico.
    *
@@ -70,9 +75,9 @@ export class WhatsAppService {
     type: WhatsAppTemplateType,
     params: WhatsAppTemplateParams,
   ): Promise<WhatsAppSendResult> {
-    const phoneNumberId = this.configService.get<string>('WHATSAPP_PHONE_NUMBER_ID');
-    const accessToken = this.configService.get<string>('WHATSAPP_ACCESS_TOKEN');
-    const apiVersion = this.configService.get<string>('WHATSAPP_API_VERSION') || 'v21.0';
+    const phoneNumberId = this.getEnv('WHATSAPP_PHONE_NUMBER_ID', 'env.whatsappPhoneNumberId');
+    const accessToken = this.getEnv('WHATSAPP_ACCESS_TOKEN', 'env.whatsappAccessToken');
+    const apiVersion = this.getEnv('WHATSAPP_API_VERSION', 'env.whatsappApiVersion') || 'v21.0';
     const template = this.resolveTemplateConfig(type);
 
     if (!phoneNumberId || !accessToken || !template.name) {
@@ -165,10 +170,17 @@ export class WhatsAppService {
    * Si no hay nada configurado, retorna [] (template fijo, sin placeholders).
    */
   getBodyParamTokens(type: WhatsAppTemplateType): string[] {
-    const specific = this.configService.get<string>(
-      `WHATSAPP_${type.toUpperCase()}_TEMPLATE_BODY_PARAMS`,
+    const upper = type.toUpperCase();
+    const bodyParamsNs: Record<WhatsAppTemplateType, string> = {
+      welcome: 'env.whatsappWelcomeTemplateBodyParams',
+      daily: 'env.whatsappDailyTemplateBodyParams',
+      weekly: 'env.whatsappWeeklyTemplateBodyParams',
+    };
+    const specific = this.getEnv(
+      `WHATSAPP_${upper}_TEMPLATE_BODY_PARAMS`,
+      bodyParamsNs[type],
     );
-    const legacy = this.configService.get<string>('WHATSAPP_TEMPLATE_BODY_PARAMS');
+    const legacy = this.getEnv('WHATSAPP_TEMPLATE_BODY_PARAMS', 'env.whatsappTemplateBodyParams');
     const raw = specific !== undefined ? specific : legacy;
     if (raw === undefined) {
       return type === 'daily' ? ['name', 'course', 'days'] : [];
@@ -185,13 +197,23 @@ export class WhatsAppService {
    */
   private resolveTemplateConfig(type: WhatsAppTemplateType): ResolvedTemplateConfig {
     const upper = type.toUpperCase();
+    const templateNameNs: Record<WhatsAppTemplateType, string> = {
+      welcome: 'env.whatsappWelcomeTemplateName',
+      daily: 'env.whatsappDailyTemplateName',
+      weekly: 'env.whatsappWeeklyTemplateName',
+    };
+    const templateLanguageNs: Record<WhatsAppTemplateType, string> = {
+      welcome: 'env.whatsappWelcomeTemplateLanguage',
+      daily: 'env.whatsappDailyTemplateLanguage',
+      weekly: 'env.whatsappWeeklyTemplateLanguage',
+    };
     const name =
-      this.configService.get<string>(`WHATSAPP_${upper}_TEMPLATE_NAME`) ||
-      this.configService.get<string>('WHATSAPP_TEMPLATE_NAME') ||
+      this.getEnv(`WHATSAPP_${upper}_TEMPLATE_NAME`, templateNameNs[type]) ||
+      this.getEnv('WHATSAPP_TEMPLATE_NAME', 'env.whatsappTemplateName') ||
       '';
     const language =
-      this.configService.get<string>(`WHATSAPP_${upper}_TEMPLATE_LANGUAGE`) ||
-      this.configService.get<string>('WHATSAPP_TEMPLATE_LANGUAGE') ||
+      this.getEnv(`WHATSAPP_${upper}_TEMPLATE_LANGUAGE`, templateLanguageNs[type]) ||
+      this.getEnv('WHATSAPP_TEMPLATE_LANGUAGE', 'env.whatsappTemplateLanguage') ||
       'es_CO';
     return { name, language };
   }

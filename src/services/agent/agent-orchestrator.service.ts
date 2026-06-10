@@ -101,6 +101,12 @@ export class AgentOrchestratorService {
 
     if (sessionExpired) {
       this.memory.clear(instance, phoneNumber);
+      if (state) {
+        state = await this.agentState.upsertState(instance, phoneNumber, state.instructorId, {
+          awaitingModuleStartConfirmation: false,
+          introShownForModuleId: undefined,
+        });
+      }
     }
 
     if (!state) {

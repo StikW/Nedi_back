@@ -172,7 +172,7 @@ export class ReminderService {
     error?: string;
   }> {
     try {
-      const candidate = await this.buildCandidateIfEligible(student);
+      const candidate = await this.buildWelcomeCandidate(student);
       if (!candidate) {
         return { sent: false, skippedReason: 'not_eligible' };
       }
@@ -192,6 +192,9 @@ export class ReminderService {
 
       if (result.success) {
         await this.studentService.markReminderSent(student.id, 'welcome');
+        this.logger.log(
+          `Bienvenida WhatsApp (Meta) enviada a ${student.phoneNumber} para estudiante ${student.id}`,
+        );
         return { sent: true };
       }
 
@@ -383,6 +386,47 @@ export class ReminderService {
   // =====================================================
 
   /**
+   * Candidato para la plantilla de bienvenida al crear/inscribir un estudiante.
+   * No exige m\u00f3dulos publicados: solo matr\u00edcula v\u00e1lida + curso existente.
+   */
+  private async buildWelcomeCandidate(student: Student): Promise<ReminderCandidate | null> {
+    if (!student.courseId || !student.instructorId || !student.phoneNumber) {
+      this.logger.warn(
+        `Bienvenida omitida: estudiante ${student.id} con registro incompleto ` +
+          `(courseId=${student.courseId ?? 'null'}, instructorId=${student.instructorId ?? 'null'}, ` +
+          `phoneNumber=${student.phoneNumber ?? 'null'})`,
+      );
+      return null;
+    }
+
+    const course = await this.courseService.findOne(student.courseId, student.instructorId);
+    if (!course) {
+      this.logger.warn(
+        `Bienvenida omitida: curso ${student.courseId} no encontrado para instructor ${student.instructorId}`,
+      );
+      return null;
+    }
+
+    const publishedModules = await this.courseModuleService.getPublishedModules(student.courseId);
+    const instructorPhone = await this.resolveInstructorPhone(student.instructorId);
+
+    return {
+      studentId: student.id,
+      studentName: student.name,
+      phoneNumber: student.phoneNumber,
+      courseId: student.courseId,
+      courseTitle: course.title,
+      instructorId: student.instructorId,
+      instructorPhone,
+      totalModules: publishedModules.length,
+      completedModules: 0,
+      daysSinceLastInteraction: 0,
+      lastInteractionAt: student.enrolledAt,
+      reason: 'no_progress',
+    };
+  }
+
+  /**
    * Determina si el estudiante est\u00e1 matriculado y a\u00fan no ha terminado el curso.
    *   completedModules < totalModulesPublicados \u2192 elegible
    *   sin m\u00f3dulos publicados                   \u2192 NO elegible (no hay nada por hacer)
@@ -456,6 +500,9 @@ export class ReminderService {
       const instructor = await this.usersService.findById(instructorId);
       if (instructor?.phoneNumber && instructor.phoneNumber.trim().length > 0) {
         return this.formatPhoneForDisplay(instructor.phoneNumber);
+      }
+      if (instructor?.evolutionNumber && instructor.evolutionNumber.trim().length > 0) {
+        return this.formatPhoneForDisplay(instructor.evolutionNumber);
       }
     } catch (err: any) {
       this.logger.warn(

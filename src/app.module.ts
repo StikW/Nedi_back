@@ -22,9 +22,8 @@ import envConfig from './core/config/env.config';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      //envFilePath: '.env',
+      envFilePath: '.env',
       cache: true,
-      //ignoreEnvFile: false,
       load: [envConfig],
     }),
     ScheduleModule.forRoot(),

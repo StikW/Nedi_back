@@ -45,7 +45,11 @@ export class StudentService {
   private async dispatchWelcome(student: Student): Promise<void> {
     try {
       const result = await this.reminderService.sendWelcomeToStudent(student);
-      if (!result.sent) {
+      if (result.sent) {
+        this.logger.log(
+          `Bienvenida WhatsApp disparada para estudiante ${student.id} (${student.phoneNumber})`,
+        );
+      } else {
         this.logger.warn(
           `Bienvenida no enviada al estudiante ${student.id} (${student.phoneNumber}): ` +
             `${result.skippedReason || result.error || 'sin motivo'}`,
@@ -103,10 +107,10 @@ export class StudentService {
       Item: student
     }));
 
-    // Dispara la bienvenida por WhatsApp en background. No bloqueamos la
-    // respuesta HTTP: el estudiante ya quedo creado en DynamoDB; si Meta
-    // falla, queda en los logs para reenv\u00edo manual via /reminders/run/welcome.
-    this.dispatchWelcome(student);
+    // Bienvenida por WhatsApp Cloud API (n\u00famero de recordatorios Meta).
+    // Se espera el env\u00edo para registrar fallos en logs; si Meta falla, el
+    // estudiante ya qued\u00f3 creado y puede reenviarse via /reminders/run/welcome.
+    await this.dispatchWelcome(student);
 
     return student;
   }

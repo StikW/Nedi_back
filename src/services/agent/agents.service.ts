@@ -164,7 +164,6 @@ export class AgentsService {
       return 'Primero elige un curso para comenzar con las preguntas. ¿Cuál de tus cursos te gustaría iniciar?';
     }
 
-    const previousModuleId = ctx.state.moduleId;
     let moduleId = ctx.state.moduleId;
     let activeModule: CourseModule | null = null;
     if (!moduleId) {
@@ -226,43 +225,57 @@ export class AgentsService {
       return 'No hay preguntas disponibles en este momento.';
     }
 
-    if (ctx.state.awaitingModuleStartConfirmation) {
-      if (!this.wantsToStartModuleQuestions(ctx.message)) {
-        return (
-          'Cuando hayas revisado el video con calma, escribe *listo*, *comenzar* o *empezar* ' +
-          'y te envío el audio introductorio junto con la primera pregunta.'
-        );
-      }
-
+    if (current.index > 0 && ctx.state.awaitingModuleStartConfirmation) {
       ctx.state = await this.agentState.upsertState(
         ctx.tenant.evolution.instance,
         ctx.phoneNumber,
         ctx.tenant.instructor.id,
         { awaitingModuleStartConfirmation: false },
       );
-    } else {
-      const moduleForIntro = activeModule || (await this.courseModuleService.findOne(moduleId));
-      const shouldSendIntro =
-        ctx.state.introShownForModuleId !== moduleId &&
-        (moduleId !== previousModuleId || current.index === 0);
+    }
 
-      if (shouldSendIntro) {
+    // En la pregunta 1 (índice 0): video + confirmación cada vez que retoma ahí.
+    // Solo tras confirmar (listo/comenzar) se envía audio-resumen y la pregunta.
+    if (current.index === 0) {
+      const confirmingStart = this.wantsToStartModuleQuestions(ctx.message);
+
+      if (ctx.state.awaitingModuleStartConfirmation && confirmingStart) {
+        ctx.state = await this.agentState.upsertState(
+          ctx.tenant.evolution.instance,
+          ctx.phoneNumber,
+          ctx.tenant.instructor.id,
+          { awaitingModuleStartConfirmation: false },
+        );
+      } else {
+        const moduleForIntro = activeModule || (await this.courseModuleService.findOne(moduleId));
         const introSent = await this.sendModuleIntro(ctx, moduleForIntro);
+
+        ctx.state = await this.agentState.upsertState(
+          ctx.tenant.evolution.instance,
+          ctx.phoneNumber,
+          ctx.tenant.instructor.id,
+          { awaitingModuleStartConfirmation: true },
+        );
+
         if (introSent) {
-          ctx.state = await this.agentState.upsertState(
-            ctx.tenant.evolution.instance,
-            ctx.phoneNumber,
-            ctx.tenant.instructor.id,
-            {
-              introShownForModuleId: moduleId,
-              awaitingModuleStartConfirmation: true,
-            },
-          );
           return (
             'Perfecto. Revisa el video con calma. Cuando quieras empezar con las preguntas, ' +
             'escribe *listo*, *comenzar* o *empezar*.'
           );
         }
+
+        if (!confirmingStart) {
+          return (
+            'Cuando estés listo para la primera pregunta, escribe *listo*, *comenzar* o *empezar*.'
+          );
+        }
+
+        ctx.state = await this.agentState.upsertState(
+          ctx.tenant.evolution.instance,
+          ctx.phoneNumber,
+          ctx.tenant.instructor.id,
+          { awaitingModuleStartConfirmation: false },
+        );
       }
     }
 
@@ -405,7 +418,10 @@ export class AgentsService {
     }
   }
 
-  /** Mensaje que acompaña el video introductorio del modulo (caption de WhatsApp). */
+  /**
+   * Caption del video: solo contexto del módulo. La invitación a escribir
+   * listo/comenzar va en el mensaje de texto que sigue al video.
+   */
   private buildModuleVideoCaption(module: CourseModule): string {
     const title = module.title?.trim() || 'este módulo';
     const orderLabel = module.order ? `Módulo ${module.order}` : 'Nuevo módulo';
@@ -416,10 +432,6 @@ export class AgentsService {
       lines.push('', teaser);
     }
 
-    lines.push(
-      '',
-      'Aquí tienes el video introductorio de este módulo. Revísalo con calma y, cuando quieras empezar con las preguntas, escribe *listo*, *comenzar* o *empezar*.',
-    );
     return lines.join('\n');
   }
 

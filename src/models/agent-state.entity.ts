@@ -25,7 +25,10 @@ export interface AgentState {
   lastSessionAt?: string;
   /** Siguiente modulo ofrecido tras completar el actual; se limpia al entrar a ese modulo. */
   offeredNextModuleId?: string;
-  /** Ultimo modulo cuyo video/audio intro ya se envio (evita omitir intro al reanudar en pregunta 0). */
+  /**
+   * @deprecated Ya no gobierna el intro; el video en pregunta 1 depende del índice
+   * en Progress (0). Se limpia al expirar sesión o completar módulo.
+   */
   introShownForModuleId?: string;
   /**
    * Tras validar una respuesta, el estudiante elige explicacion o siguiente pregunta.
