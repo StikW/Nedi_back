@@ -212,13 +212,15 @@ export class AgentsService {
       ctx.state.introShownForModuleId !== moduleId &&
       (moduleId !== previousModuleId || current.index === 0);
     if (shouldSendIntro) {
-      await this.sendModuleIntro(ctx, moduleForIntro);
-      ctx.state = await this.agentState.upsertState(
-        ctx.tenant.evolution.instance,
-        ctx.phoneNumber,
-        ctx.tenant.instructor.id,
-        { introShownForModuleId: moduleId },
-      );
+      const introSent = await this.sendModuleIntro(ctx, moduleForIntro);
+      if (introSent) {
+        ctx.state = await this.agentState.upsertState(
+          ctx.tenant.evolution.instance,
+          ctx.phoneNumber,
+          ctx.tenant.instructor.id,
+          { introShownForModuleId: moduleId },
+        );
+      }
     }
 
     const questionText = this.formatQuestion(current.question, current.index, current.total);
@@ -304,45 +306,53 @@ export class AgentsService {
 
   /**
    * Intro del modulo (sub-workflow sendVideo en n8n):
-   * - Video/imagen: se envia el archivo.
-   * - PDF/otros: audio TTS con titulo + descripcion (no documento).
+   * Si `content` existe, se envia como video (Drive, Catbox, S3, etc.).
+   * Solo sin URL de video: TTS con titulo + descripcion (modulos solo PDF).
    */
-  private async sendModuleIntro(ctx: RuntimeContext, module: CourseModule | null): Promise<void> {
-    if (!module) return;
+  private async sendModuleIntro(ctx: RuntimeContext, module: CourseModule | null): Promise<boolean> {
+    if (!module) return false;
     const to = this.replyTo(ctx);
-    const caption = module.title || '';
+    const rawContent = (module.content || '').trim();
+    if (!rawContent) return false;
+
     try {
       const mediaUrl = await this.resolveModuleContentUrl(module);
-      if (mediaUrl) {
-        if (this.isYoutubeUrl(mediaUrl)) {
-          await this.evolution.sendText(
-            ctx.tenant.evolution,
-            to,
-            `${caption}\n\n${mediaUrl}`,
-          );
-          return;
-        }
-        if (this.isVideoUrl(mediaUrl)) {
-          await this.evolution.sendVideo(ctx.tenant.evolution, to, mediaUrl, caption);
-          return;
-        }
-        if (this.isImageUrl(mediaUrl)) {
-          await this.evolution.sendMedia(ctx.tenant.evolution, to, mediaUrl, {
-            mediatype: 'image',
-            caption,
-          });
-          return;
-        }
+      if (!mediaUrl) return false;
+
+      if (this.isYoutubeUrl(mediaUrl)) {
+        await this.evolution.sendText(
+          ctx.tenant.evolution,
+          to,
+          `${module.title || 'Video del módulo'}\n\n${mediaUrl}`,
+        );
+        return true;
       }
-      const introText = [caption, module.description].filter(Boolean).join('. ');
-      if (introText) {
+      if (this.isImageUrl(mediaUrl)) {
+        await this.evolution.sendMedia(ctx.tenant.evolution, to, mediaUrl, {
+          mediatype: 'image',
+          caption: module.title || '',
+        });
+        return true;
+      }
+      if (this.isDocumentUrl(mediaUrl)) {
+        const introText = [module.title, module.description].filter(Boolean).join('. ');
+        if (!introText) return false;
         const audio = await this.media.textToSpeechBase64(introText.slice(0, 4000));
-        if (audio) {
-          await this.evolution.sendAudio(ctx.tenant.evolution, to, audio);
-        }
+        if (!audio) return false;
+        await this.evolution.sendAudio(ctx.tenant.evolution, to, audio);
+        return true;
       }
+
+      // n8n: cualquier URL en `content` se manda como video (sin exigir .mp4 en la ruta)
+      await this.evolution.sendVideo(ctx.tenant.evolution, to, mediaUrl, {
+        caption: 'Vídeo del módulo - espera la primera pregunta ...',
+        fileName: `video-${module.id}.mp4`,
+      });
+      this.logger.log(`Video de modulo enviado moduleId=${module.id}`);
+      return true;
     } catch (err: any) {
       this.logger.warn(`No se pudo enviar intro del modulo ${module.id}: ${err?.message || err}`);
+      return false;
     }
   }
 
@@ -365,13 +375,12 @@ export class AgentsService {
     return /youtube\.com|youtu\.be/i.test(url);
   }
 
-  private isVideoUrl(url: string): boolean {
-    const lower = url.toLowerCase();
-    return /\.(mp4|mov|webm|mkv|avi|m4v)(\?|$)/.test(lower) || /\/modules\/[^/]+\/[^/]+\.(mp4|mov|webm)/i.test(lower);
-  }
-
   private isImageUrl(url: string): boolean {
     return /\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(url);
+  }
+
+  private isDocumentUrl(url: string): boolean {
+    return /\.pdf(\?|$)/i.test(url);
   }
 
   /** Agente Resumen + TTS antes de mostrar la pregunta (flujo n8n). */
@@ -382,11 +391,9 @@ export class AgentsService {
     moduleId: string,
   ): Promise<void> {
     try {
-      const module = await this.courseModuleService.findOne(moduleId);
-      const moduleHint = module?.title ? `Modulo: ${module.title}\n` : '';
       const resumen = await this.llm.runAgent({
         system: RESUMEN_PROMPT,
-        userMessage: `${moduleHint}Organiza una explicacion introductoria breve para esta pregunta:\n${questionText}`,
+        userMessage: `Organiza una explicacion introductoria breve para esta pregunta:\n${questionText}`,
         tools: [
           this.ragTool(
             'vector_questions',
@@ -394,7 +401,7 @@ export class AgentsService {
             ctx,
             courseId,
             moduleId,
-            module?.title,
+            questionText,
           ),
         ],
       });

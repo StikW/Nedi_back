@@ -44,7 +44,13 @@ export class EvolutionService {
     cfg: EvolutionConfig,
     to: string,
     media: string,
-    options: { mediatype?: 'image' | 'video' | 'document'; caption?: string; fileName?: string } = {},
+    options: {
+      mediatype?: 'image' | 'video' | 'document';
+      caption?: string;
+      fileName?: string;
+      mimetype?: string;
+      delay?: number;
+    } = {},
   ): Promise<void> {
     await this.post(cfg, `/message/sendMedia/${cfg.instance}`, {
       number: to,
@@ -52,12 +58,25 @@ export class EvolutionService {
       media,
       caption: options.caption,
       fileName: options.fileName,
+      mimetype: options.mimetype,
+      delay: options.delay,
     });
   }
 
   /** Envia un video del modulo (equivalente al sub-workflow sendVideo). */
-  async sendVideo(cfg: EvolutionConfig, to: string, media: string, caption?: string): Promise<void> {
-    await this.sendMedia(cfg, to, media, { mediatype: 'video', caption });
+  async sendVideo(
+    cfg: EvolutionConfig,
+    to: string,
+    media: string,
+    options: { caption?: string; fileName?: string; delay?: number } = {},
+  ): Promise<void> {
+    await this.sendMedia(cfg, to, media, {
+      mediatype: 'video',
+      caption: options.caption,
+      fileName: options.fileName || 'video-modulo.mp4',
+      mimetype: 'video/mp4',
+      delay: options.delay ?? 2000,
+    });
   }
 
   /**
