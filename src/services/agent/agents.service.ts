@@ -21,6 +21,7 @@ import {
   RESUMEN_PROMPT,
 } from './prompts';
 import { MediaService } from './media.service';
+import { UploadsService } from '../uploads.service';
 import { ModuleQuestion } from '../../models/course-module-questions.entity';
 
 export interface RuntimeContext {
@@ -53,6 +54,7 @@ export class AgentsService {
     private readonly agentState: AgentStateService,
     private readonly evolution: EvolutionService,
     private readonly media: MediaService,
+    private readonly uploads: UploadsService,
   ) {}
 
   // ===================================================================
@@ -168,11 +170,6 @@ export class AgentsService {
       { flujo: 'preguntas', moduleId, offeredNextModuleId: undefined },
     );
 
-    // sendVideo (n8n): solo al entrar a un modulo nuevo
-    if (moduleId !== previousModuleId) {
-      await this.sendModuleIntro(ctx, activeModule || (await this.courseModuleService.findOne(moduleId)));
-    }
-
     // Obtener o generar banco de preguntas
     let current = await this.questions.getCurrentQuestion(courseId, moduleId, ctx.phoneNumber);
     if (current.state === 'empty') {
@@ -200,6 +197,7 @@ export class AgentsService {
           moduleId: undefined,
           lastQuestion: undefined,
           offeredNextModuleId: nextModule?.id,
+          introShownForModuleId: undefined,
         },
       );
       return reply;
@@ -209,12 +207,26 @@ export class AgentsService {
       return 'No hay preguntas disponibles en este momento.';
     }
 
+    const moduleForIntro = activeModule || (await this.courseModuleService.findOne(moduleId));
+    const shouldSendIntro =
+      ctx.state.introShownForModuleId !== moduleId &&
+      (moduleId !== previousModuleId || current.index === 0);
+    if (shouldSendIntro) {
+      await this.sendModuleIntro(ctx, moduleForIntro);
+      ctx.state = await this.agentState.upsertState(
+        ctx.tenant.evolution.instance,
+        ctx.phoneNumber,
+        ctx.tenant.instructor.id,
+        { introShownForModuleId: moduleId },
+      );
+    }
+
     const questionText = this.formatQuestion(current.question, current.index, current.total);
 
     // AI Agent Resumen -> TTS -> audio, luego la pregunta en texto (flujo n8n)
     await this.sendResumenAudio(ctx, questionText, courseId, moduleId);
 
-    await this.refreshLastQuestion(ctx, courseId, moduleId);
+    await this.refreshLastQuestion(ctx, courseId, moduleId, questionText);
     return questionText;
   }
 
@@ -247,10 +259,9 @@ export class AgentsService {
       tools,
     });
 
-    // El estudiante respondio la pregunta actual: avanzar el indice
+    // Avanzar indice; lastQuestion se conserva (la pregunta respondida) para explicaciones
     if (courseId && moduleId) {
       await this.agentState.advanceQuestion(ctx.phoneNumber, moduleId, courseId);
-      await this.refreshLastQuestion(ctx, courseId, moduleId);
     }
     return answer;
   }
@@ -263,6 +274,7 @@ export class AgentsService {
     const courseId = ctx.state.courseId;
     const moduleId = ctx.state.moduleId;
 
+    const questionContext = ctx.state.lastQuestion || '';
     const tools: AgentTool[] = [
       this.ragTool(
         'vector_explain',
@@ -270,11 +282,12 @@ export class AgentsService {
         ctx,
         courseId,
         moduleId,
+        questionContext || ctx.message,
       ),
     ];
 
-    const userMessage = ctx.state.lastQuestion
-      ? `Pregunta reciente: ${ctx.state.lastQuestion}\nMensaje del estudiante: ${ctx.message}`
+    const userMessage = questionContext
+      ? `Pregunta que el estudiante acaba de responder o sobre la que pide aclaración:\n${questionContext}\n\nMensaje del estudiante: ${ctx.message}`
       : ctx.message;
 
     return this.llm.runAgent({
@@ -297,26 +310,30 @@ export class AgentsService {
   private async sendModuleIntro(ctx: RuntimeContext, module: CourseModule | null): Promise<void> {
     if (!module) return;
     const to = this.replyTo(ctx);
-    const content = (module.content || '').trim();
     const caption = module.title || '';
     try {
-      if (/^https?:\/\//i.test(content)) {
-        const lower = content.toLowerCase();
-        const isVideo = /\.(mp4|mov|webm|mkv|avi)(\?|$)/.test(lower);
-        const isImage = /\.(jpg|jpeg|png|gif|webp)(\?|$)/.test(lower);
-        if (isVideo) {
-          await this.evolution.sendVideo(ctx.tenant.evolution, to, content, caption);
+      const mediaUrl = await this.resolveModuleContentUrl(module);
+      if (mediaUrl) {
+        if (this.isYoutubeUrl(mediaUrl)) {
+          await this.evolution.sendText(
+            ctx.tenant.evolution,
+            to,
+            `${caption}\n\n${mediaUrl}`,
+          );
           return;
         }
-        if (isImage) {
-          await this.evolution.sendMedia(ctx.tenant.evolution, to, content, {
+        if (this.isVideoUrl(mediaUrl)) {
+          await this.evolution.sendVideo(ctx.tenant.evolution, to, mediaUrl, caption);
+          return;
+        }
+        if (this.isImageUrl(mediaUrl)) {
+          await this.evolution.sendMedia(ctx.tenant.evolution, to, mediaUrl, {
             mediatype: 'image',
             caption,
           });
           return;
         }
       }
-      // PDF u otro contenido: audio introductorio (como sendVideo en prod)
       const introText = [caption, module.description].filter(Boolean).join('. ');
       if (introText) {
         const audio = await this.media.textToSpeechBase64(introText.slice(0, 4000));
@@ -327,6 +344,34 @@ export class AgentsService {
     } catch (err: any) {
       this.logger.warn(`No se pudo enviar intro del modulo ${module.id}: ${err?.message || err}`);
     }
+  }
+
+  private async resolveModuleContentUrl(module: CourseModule): Promise<string | null> {
+    const raw = (module.content || '').trim();
+    if (!raw) return null;
+    if (/^https?:\/\//i.test(raw)) return raw;
+
+    const key = raw.replace(/^\//, '');
+    try {
+      return await this.uploads.getModuleDownloadUrl(module.courseId, module.id, key, 3600);
+    } catch {
+      const bucket = this.configService.get<string>('S3_BUCKET_MODULES');
+      const region = this.configService.get<string>('AWS_REGION') || 'us-east-1';
+      return bucket ? `https://${bucket}.s3.${region}.amazonaws.com/${key}` : null;
+    }
+  }
+
+  private isYoutubeUrl(url: string): boolean {
+    return /youtube\.com|youtu\.be/i.test(url);
+  }
+
+  private isVideoUrl(url: string): boolean {
+    const lower = url.toLowerCase();
+    return /\.(mp4|mov|webm|mkv|avi|m4v)(\?|$)/.test(lower) || /\/modules\/[^/]+\/[^/]+\.(mp4|mov|webm)/i.test(lower);
+  }
+
+  private isImageUrl(url: string): boolean {
+    return /\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(url);
   }
 
   /** Agente Resumen + TTS antes de mostrar la pregunta (flujo n8n). */
@@ -392,11 +437,69 @@ export class AgentsService {
   }
 
   private formatQuestion(question: ModuleQuestion, index: number, total: number): string {
+    if (this.isRelacionarQuestion(question)) {
+      return this.formatRelacionarQuestion(question, index, total);
+    }
     let text = `*Pregunta ${index + 1} de ${total}*\n\n${question.pregunta}`;
     if (question.opciones?.length) {
       text += '\n\n' + question.opciones.map((o, i) => `${i + 1}. ${o}`).join('\n');
     }
     return text;
+  }
+
+  private isRelacionarQuestion(question: ModuleQuestion): boolean {
+    return question.tipo === 'relacionar' || /relacionar/i.test(question.pregunta);
+  }
+
+  private formatRelacionarQuestion(question: ModuleQuestion, index: number, total: number): string {
+    const header = `*Pregunta ${index + 1} de ${total}*`;
+    const instruction = this.extractRelacionarInstruction(question.pregunta);
+    const descripciones =
+      question.descripciones?.length
+        ? question.descripciones
+        : this.extractLetteredLines(question.pregunta);
+    const items =
+      question.items?.length
+        ? question.items
+        : (question.opciones || []).filter((op) => !this.isRelacionarAnswerKey(op)).length
+          ? (question.opciones || []).filter((op) => !this.isRelacionarAnswerKey(op))
+          : this.extractNumberedLines(question.pregunta);
+
+    const parts = [header, '', instruction];
+    if (items.length) {
+      parts.push('', '*Elementos a relacionar:*', ...items.map((item, i) => `${i + 1}. ${item}`));
+    }
+    if (descripciones.length) {
+      parts.push('', '*Descripciones:*', ...descripciones.map((d) => this.ensureLetterPrefix(d)));
+    }
+    parts.push('', 'Responde indicando cada pareja (ej: 1-A, 2-C, 3-B, 4-D).');
+    return parts.join('\n');
+  }
+
+  private extractRelacionarInstruction(pregunta: string): string {
+    const firstBlock = pregunta.split(/\n\s*[A-D][).:-]/)[0].trim();
+    return firstBlock || pregunta.trim();
+  }
+
+  private extractLetteredLines(text: string): string[] {
+    const matches = [...text.matchAll(/(?:^|\n)\s*([A-D][).:-]\s*[^\n]+)/gi)];
+    return matches.map((m) => m[1].trim());
+  }
+
+  private extractNumberedLines(text: string): string[] {
+    return [...text.matchAll(/(?:^|\n)\s*\d+\.\s*([^\n]+)/g)]
+      .map((m) => m[1].trim())
+      .filter((line) => line && !/^[A-D][).:-]/i.test(line));
+  }
+
+  private isRelacionarAnswerKey(option: string): boolean {
+    const t = option.trim();
+    return /^[A-D]\s*[):\-]/i.test(t) || /^\d+\s*[-–:]\s*[A-D]\b/i.test(t);
+  }
+
+  private ensureLetterPrefix(line: string): string {
+    const t = line.trim();
+    return /^[A-D][).:-]/i.test(t) ? t : t;
   }
 
   private replyTo(ctx: RuntimeContext): string {
@@ -431,19 +534,24 @@ export class AgentsService {
     };
   }
 
-  private async refreshLastQuestion(ctx: RuntimeContext, courseId: string, moduleId: string): Promise<void> {
-    const current = await this.questions.getCurrentQuestion(courseId, moduleId, ctx.phoneNumber);
-    const lastQuestion =
-      current.state === 'question'
-        ? typeof current.question === 'string'
-          ? current.question
-          : current.question.pregunta
-        : undefined;
+  private async refreshLastQuestion(
+    ctx: RuntimeContext,
+    courseId: string,
+    moduleId: string,
+    formattedQuestion?: string,
+  ): Promise<void> {
+    let text = formattedQuestion;
+    if (!text) {
+      const current = await this.questions.getCurrentQuestion(courseId, moduleId, ctx.phoneNumber);
+      if (current.state === 'question') {
+        text = this.formatQuestion(current.question, current.index, current.total);
+      }
+    }
     ctx.state = await this.agentState.upsertState(
       ctx.tenant.evolution.instance,
       ctx.phoneNumber,
       ctx.tenant.instructor.id,
-      { lastQuestion },
+      { lastQuestion: text },
     );
   }
 

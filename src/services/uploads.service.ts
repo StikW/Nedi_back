@@ -131,21 +131,18 @@ export class UploadsService {
   /**
    * Generate a pre-signed URL for downloading a module resource from S3
    */
-  async getModuleDownloadUrl(courseId: string, moduleId: string, fileKey: string): Promise<string> {
-    // Validate that the fileKey belongs to the course and module
-    const prefix = `courses/${courseId}/modules/${moduleId}/`;
-    // Create the GetObject command
+  async getModuleDownloadUrl(
+    courseId: string,
+    moduleId: string,
+    fileKey: string,
+    expiresIn = 60,
+  ): Promise<string> {
     const getObjectCommand = new GetObjectCommand({
       Bucket: this.modulesBucketName,
       Key: fileKey,
     });
 
-    // Generate pre-signed URL valid for 60 seconds
-    const downloadUrl = await getSignedUrl(this.s3Client, getObjectCommand, {
-      expiresIn: 60, // 60 seconds
-    });
-
-    return downloadUrl;
+    return getSignedUrl(this.s3Client, getObjectCommand, { expiresIn });
   }
 
   /**

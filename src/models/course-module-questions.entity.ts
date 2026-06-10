@@ -7,6 +7,10 @@ export interface ModuleQuestion {
   pregunta: string;
   tipo: 'opcion_multiple' | 'verdadero_falso' | 'completar' | 'relacionar' | string;
   opciones?: string[];
+  /** Columna izquierda en preguntas de relacionar (tacticas / conceptos numerados). */
+  items?: string[];
+  /** Columna derecha en preguntas de relacionar (descripciones A, B, C...). */
+  descripciones?: string[];
   respuesta_correcta: string | number | string[];
 }
 

@@ -147,6 +147,7 @@ Convertir un error o duda en una oportunidad de aprendizaje.
 
 ## Flujo
 - Usa la tool \`vector_explain\` para obtener el material y organiza la explicación.
+- La explicación debe corresponder **únicamente** a la pregunta indicada en el mensaje del usuario, no a otra del módulo.
 
 ## Restricciones
 - No validar respuestas ni generar preguntas.

@@ -73,6 +73,9 @@ export class AgentStateService {
       offeredNextModuleId: 'offeredNextModuleId' in patch
         ? patch.offeredNextModuleId
         : current?.offeredNextModuleId,
+      introShownForModuleId: 'introShownForModuleId' in patch
+        ? patch.introShownForModuleId
+        : current?.introShownForModuleId,
       updatedAt: new Date().toISOString(),
     };
     try {

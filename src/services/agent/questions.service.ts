@@ -14,6 +14,7 @@ Requisitos:
 - Genera entre 5 y 7 preguntas por módulo.
 - Usa diferentes tipos de preguntas: verdadero/falso, completar la frase, relación de conceptos, opción múltiple, etc.
 - Cada pregunta debe incluir opciones de respuesta (si aplica) y la respuesta correcta.
+- Para tipo "relacionar": usa campos separados "items" (lista numerada a emparejar) y "descripciones" (lista con letras A, B, C...). NO incluyas la respuesta correcta ni pares ya resueltos en "opciones". "pregunta" solo debe tener la instrucción breve.
 - Las preguntas deben ser objetivas y medibles, nunca de opinión.
 - Todas las preguntas deben poder responderse únicamente con la información contenida en el material proporcionado. No inventes ni asumas conocimiento externo.
 - Las preguntas no deben ser superficiales, deben tener cierto grado de complejidad.
@@ -23,7 +24,9 @@ Requisitos:
     {
       "pregunta": "Texto de la pregunta",
       "tipo": "opcion_multiple" | "verdadero_falso" | "completar" | "relacionar",
-      "opciones": ["opcion1", "opcion2", "opcion3"],
+      "opciones": ["opcion1", "opcion2"],
+      "items": ["solo si tipo es relacionar"],
+      "descripciones": ["A) ...", "B) ..."],
       "respuesta_correcta": "..."
     }
   ]
