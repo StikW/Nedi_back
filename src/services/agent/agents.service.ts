@@ -323,7 +323,7 @@ export class AgentsService {
         await this.evolution.sendText(
           ctx.tenant.evolution,
           to,
-          `${module.title || 'Video del módulo'}\n\n${mediaUrl}`,
+          `${this.buildModuleVideoCaption(module)}\n\n${mediaUrl}`,
         );
         return true;
       }
@@ -345,7 +345,7 @@ export class AgentsService {
 
       // n8n: cualquier URL en `content` se manda como video (sin exigir .mp4 en la ruta)
       await this.evolution.sendVideo(ctx.tenant.evolution, to, mediaUrl, {
-        caption: 'Vídeo del módulo - espera la primera pregunta ...',
+        caption: this.buildModuleVideoCaption(module),
         fileName: `video-${module.id}.mp4`,
       });
       this.logger.log(`Video de modulo enviado moduleId=${module.id}`);
@@ -354,6 +354,31 @@ export class AgentsService {
       this.logger.warn(`No se pudo enviar intro del modulo ${module.id}: ${err?.message || err}`);
       return false;
     }
+  }
+
+  /** Mensaje que acompaña el video introductorio del modulo (caption de WhatsApp). */
+  private buildModuleVideoCaption(module: CourseModule): string {
+    const title = module.title?.trim() || 'este módulo';
+    const orderLabel = module.order ? `Módulo ${module.order}` : 'Nuevo módulo';
+    const teaser = this.shortModuleTeaser(module.description);
+    const lines = [`*${orderLabel}: ${title}*`];
+
+    if (teaser) {
+      lines.push('', teaser);
+    }
+
+    lines.push(
+      '',
+      'Aquí tienes el video introductorio de este módulo. Revísalo con calma y, cuando estés listo, te envío la primera pregunta para poner en práctica lo aprendido.',
+    );
+    return lines.join('\n');
+  }
+
+  private shortModuleTeaser(description?: string): string {
+    if (!description?.trim()) return '';
+    const clean = description.trim().replace(/\s+/g, ' ');
+    const firstSentence = clean.split(/(?<=[.!?])\s+/)[0] || clean;
+    return firstSentence.length > 140 ? `${firstSentence.slice(0, 137)}...` : firstSentence;
   }
 
   private async resolveModuleContentUrl(module: CourseModule): Promise<string | null> {
