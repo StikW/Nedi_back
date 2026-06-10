@@ -629,7 +629,11 @@ export class AgentsService {
 
     const parts = [header, '', instruction];
     if (items.length) {
-      parts.push('', '*Elementos a relacionar:*', ...items.map((item, i) => `${i + 1}. ${item}`));
+      parts.push(
+        '',
+        '*Elementos a relacionar:*',
+        ...items.map((item, i) => this.formatNumberedListLine(item, i + 1)),
+      );
     }
     if (descripciones.length) {
       parts.push('', '*Descripciones:*', ...descripciones.map((d) => this.ensureLetterPrefix(d)));
@@ -652,6 +656,12 @@ export class AgentsService {
     return [...text.matchAll(/(?:^|\n)\s*\d+\.\s*([^\n]+)/g)]
       .map((m) => m[1].trim())
       .filter((line) => line && !/^[A-D][).:-]/i.test(line));
+  }
+
+  /** Evita duplicar numeración cuando el ítem ya viene como "1. Texto…". */
+  private formatNumberedListLine(item: string, index: number): string {
+    const stripped = item.trim().replace(/^\d+\.\s*/, '').trim();
+    return `${index}. ${stripped}`;
   }
 
   private isRelacionarAnswerKey(option: string): boolean {

@@ -190,6 +190,52 @@ export class UsersService {
     );
   }
 
+  /**
+   * Copia el número vinculado en Evolution al campo `phoneNumber` del instructor.
+   * Ese valor alimenta la plantilla de bienvenida (`instructor_phone`).
+   */
+  public async syncInstructorPhoneFromEvolution(
+    userId: string,
+    evolutionNumber: string | null | undefined,
+  ): Promise<void> {
+    const now = new Date().toISOString();
+
+    if (evolutionNumber && evolutionNumber.trim()) {
+      const normalized = this.normalizePhoneNumber(evolutionNumber);
+      await this.dynamoClient.send(
+        new UpdateCommand({
+          TableName: USERS_TABLE,
+          Key: { id: userId },
+          UpdateExpression: 'SET #phoneNumber = :phoneNumber, #updatedAt = :updatedAt',
+          ExpressionAttributeNames: {
+            '#phoneNumber': 'phoneNumber',
+            '#updatedAt': 'updatedAt',
+          },
+          ExpressionAttributeValues: {
+            ':phoneNumber': normalized,
+            ':updatedAt': now,
+          },
+        }),
+      );
+      return;
+    }
+
+    await this.dynamoClient.send(
+      new UpdateCommand({
+        TableName: USERS_TABLE,
+        Key: { id: userId },
+        UpdateExpression: 'REMOVE #phoneNumber SET #updatedAt = :updatedAt',
+        ExpressionAttributeNames: {
+          '#phoneNumber': 'phoneNumber',
+          '#updatedAt': 'updatedAt',
+        },
+        ExpressionAttributeValues: {
+          ':updatedAt': now,
+        },
+      }),
+    );
+  }
+
   /** Excluye campos sensibles antes de enviar el usuario al cliente. */
   private toPublicUser(user: User): UserResponseDto {
     const { password, evolutionApiKey, ...rest } = user;
@@ -212,7 +258,7 @@ export class UsersService {
    * Los \u00fanicos campos editables por self-service son:
    *   - name
    *   - email
-   *   - phoneNumber  (\u2190 lo que el flujo de bienvenida WhatsApp usa)
+   *   - phoneNumber  (solo lectura: se sincroniza desde Evolution al conectar WhatsApp)
    *
    * Para cambiar la password se sigue usando POST /auth/change-password.
    */
@@ -223,7 +269,6 @@ export class UsersService {
     const sanitized: UpdateUserDto = {
       name: updateDto.name,
       email: updateDto.email,
-      phoneNumber: updateDto.phoneNumber,
     };
     return this.updateUser(userId, sanitized);
   }

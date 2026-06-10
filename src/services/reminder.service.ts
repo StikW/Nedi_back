@@ -491,18 +491,17 @@ export class ReminderService {
 
   /**
    * Resuelve el tel\u00e9fono del instructor que se inserta en `nedi_bienvenida_curso`.
-   * \u00danica fuente: el campo `phoneNumber` del User (DynamoDB).
-   * Si el instructor a\u00fan no lo configur\u00f3 en su perfil, devolvemos `null`
-   * y la corrida de `welcome` omitir\u00e1 el env\u00edo para ese estudiante.
+   * Fuente principal: n\u00famero vinculado en Evolution (`evolutionNumber`), sincronizado
+   * autom\u00e1ticamente a `phoneNumber` al conectar WhatsApp del agente.
    */
   private async resolveInstructorPhone(instructorId: string): Promise<string | null> {
     try {
       const instructor = await this.usersService.findById(instructorId);
-      if (instructor?.phoneNumber && instructor.phoneNumber.trim().length > 0) {
-        return this.formatPhoneForDisplay(instructor.phoneNumber);
-      }
       if (instructor?.evolutionNumber && instructor.evolutionNumber.trim().length > 0) {
         return this.formatPhoneForDisplay(instructor.evolutionNumber);
+      }
+      if (instructor?.phoneNumber && instructor.phoneNumber.trim().length > 0) {
+        return this.formatPhoneForDisplay(instructor.phoneNumber);
       }
     } catch (err: any) {
       this.logger.warn(

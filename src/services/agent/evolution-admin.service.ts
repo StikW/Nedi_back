@@ -160,6 +160,12 @@ export class EvolutionAdminService {
       ...(number ? { evolutionNumber: number } : {}),
     });
 
+    if (number) {
+      await this.usersService.syncInstructorPhoneFromEvolution(fresh.id, number);
+    } else if (status === 'disconnected') {
+      await this.usersService.syncInstructorPhoneFromEvolution(fresh.id, null);
+    }
+
     return { instance, state, status, number };
   }
 
@@ -205,7 +211,11 @@ export class EvolutionAdminService {
     } catch (err: any) {
       this.logger.warn(`logout/${instance}: ${err?.message || err}`);
     }
-    await this.usersService.updateEvolutionConfig(instructor.id, { evolutionStatus: 'disconnected' });
+    await this.usersService.updateEvolutionConfig(instructor.id, {
+      evolutionStatus: 'disconnected',
+      evolutionNumber: '',
+    });
+    await this.usersService.syncInstructorPhoneFromEvolution(instructor.id, null);
     return { instance, success: true };
   }
 
