@@ -23,24 +23,32 @@ export class EvolutionService {
     return (cfg.serverUrl || '').replace(/\/+$/, '');
   }
 
-  /**
-   * Muestra "escribiendo..." en WhatsApp (Evolution sendPresence / composing).
-   * `delay` = cuánto dura cada pulso en ms; no bloquea el procesamiento del agente.
-   */
-  async sendTyping(cfg: EvolutionConfig, to: string, delayMs = 3000): Promise<void> {
+  /** Presencia justo antes de enviar: `composing` (texto) o `recording` (audio). */
+  async sendPresence(
+    cfg: EvolutionConfig,
+    to: string,
+    presence: 'composing' | 'recording',
+    delayMs = 1200,
+  ): Promise<void> {
     try {
       await this.post(cfg, `/chat/sendPresence/${cfg.instance}`, {
         number: to,
-        presence: 'composing',
+        presence,
         delay: delayMs,
       });
     } catch (err: any) {
-      this.logger.debug(`sendTyping omitido: ${err?.message || err}`);
+      this.logger.debug(`sendPresence(${presence}) omitido: ${err?.message || err}`);
     }
   }
 
   /** Envia un mensaje de texto al estudiante. */
-  async sendText(cfg: EvolutionConfig, to: string, text: string): Promise<void> {
+  async sendText(
+    cfg: EvolutionConfig,
+    to: string,
+    text: string,
+    presenceDelayMs = 1200,
+  ): Promise<void> {
+    await this.sendPresence(cfg, to, 'composing', presenceDelayMs);
     await this.post(cfg, `/message/sendText/${cfg.instance}`, {
       number: to,
       text,
@@ -48,7 +56,13 @@ export class EvolutionService {
   }
 
   /** Envia una nota de voz (audio en base64). */
-  async sendAudio(cfg: EvolutionConfig, to: string, audioBase64: string): Promise<void> {
+  async sendAudio(
+    cfg: EvolutionConfig,
+    to: string,
+    audioBase64: string,
+    presenceDelayMs = 1200,
+  ): Promise<void> {
+    await this.sendPresence(cfg, to, 'recording', presenceDelayMs);
     await this.post(cfg, `/message/sendWhatsAppAudio/${cfg.instance}`, {
       number: to,
       audio: audioBase64,

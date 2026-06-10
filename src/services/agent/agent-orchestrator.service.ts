@@ -121,29 +121,31 @@ export class AgentOrchestratorService {
     let reply = '';
 
     try {
-      reply = await this.runWithTypingIndicator(tenant, recipientJid || phoneNumber, async () => {
-        if (sessionExpired) {
-          this.logger.log(
-            `[${instance}] ${phoneNumber} -> AI_ConversacionInicial (${welcomeReason}, timeout=${sessionTimeoutMin}m)`,
-          );
-          return this.agents.runConversacionInicial(ctx);
-        }
-
+      if (sessionExpired) {
+        this.logger.log(
+          `[${instance}] ${phoneNumber} -> AI_ConversacionInicial (${welcomeReason}, timeout=${sessionTimeoutMin}m)`,
+        );
+        reply = await this.agents.runConversacionInicial(ctx);
+      } else {
         const route = await this.agents.classify(ctx);
         this.logger.log(`[${instance}] ${phoneNumber} -> ${route} (flujo=${ctx.state.flujo})`);
 
         switch (route) {
           case 'AI_Preguntas':
-            return this.agents.runPreguntas(ctx);
+            reply = await this.agents.runPreguntas(ctx);
+            break;
           case 'AI_Respuestas':
-            return this.agents.runRespuestas(ctx);
+            reply = await this.agents.runRespuestas(ctx);
+            break;
           case 'AI_Explicar':
-            return this.agents.runExplicar(ctx);
+            reply = await this.agents.runExplicar(ctx);
+            break;
           case 'AI_Conversacion':
           default:
-            return this.agents.runConversacion(ctx);
+            reply = await this.agents.runConversacion(ctx);
+            break;
         }
-      });
+      }
     } catch (err: any) {
       this.logger.error(`Error en agente: ${err?.message || err}`);
       reply = 'Disculpa, tuve un inconveniente procesando tu mensaje. ¿Puedes intentarlo de nuevo?';
@@ -153,35 +155,29 @@ export class AgentOrchestratorService {
       reply = '¿En qué puedo ayudarte con tu aprendizaje?';
     }
 
-    await this.send(tenant, phoneNumber, reply, recipientJid);
+    const presenceDelayMs = this.configService.get<number>('AGENT_TYPING_DELAY_MS') ?? 1200;
+    await this.send(tenant, phoneNumber, reply, recipientJid, presenceDelayMs);
     this.memory.append(instance, phoneNumber, message, reply);
     state = await this.agentState.upsertState(instance, phoneNumber, tenant.instructor.id, {
       lastSessionAt: new Date().toISOString(),
     });
   }
 
-  /**
-   * Muestra "escribiendo..." una sola vez al iniciar el procesamiento del agente.
-   */
-  private async runWithTypingIndicator<T>(
-    tenant: TenantContext,
-    to: string,
-    work: () => Promise<T>,
-  ): Promise<T> {
-    const delayMs = this.configService.get<number>('AGENT_TYPING_DELAY_MS') ?? 3000;
-    void this.evolution.sendTyping(tenant.evolution, to, delayMs);
-    return work();
-  }
-
-  /** Envia la respuesta al estudiante por Evolution. */
+  /** Envia la respuesta de texto; la burbuja "escribiendo..." se muestra justo antes. */
   private async send(
     tenant: TenantContext,
     phoneNumber: string,
     reply: string,
     recipientJid: string,
+    presenceDelayMs: number,
   ): Promise<void> {
     try {
-      await this.evolution.sendText(tenant.evolution, recipientJid || phoneNumber, reply);
+      await this.evolution.sendText(
+        tenant.evolution,
+        recipientJid || phoneNumber,
+        reply,
+        presenceDelayMs,
+      );
     } catch (err: any) {
       this.logger.error(`No se pudo enviar respuesta a ${phoneNumber}: ${err?.message || err}`);
     }

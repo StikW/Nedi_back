@@ -84,11 +84,8 @@ export default registerAs('env', () => ({
   agentSessionTimeoutMinutes: process.env.AGENT_SESSION_TIMEOUT_MINUTES
     ? Number(process.env.AGENT_SESSION_TIMEOUT_MINUTES)
     : 20,
-  // Indicador "escribiendo..." mientras el agente procesa (ms)
-  agentTypingPulseMs: process.env.AGENT_TYPING_PULSE_MS
-    ? Number(process.env.AGENT_TYPING_PULSE_MS)
-    : 2500,
+  // Duración de la burbuja de presencia justo antes de enviar (ms)
   agentTypingDelayMs: process.env.AGENT_TYPING_DELAY_MS
     ? Number(process.env.AGENT_TYPING_DELAY_MS)
-    : 3000,
+    : 1200,
 }));

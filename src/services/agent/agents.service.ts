@@ -62,11 +62,8 @@ export class AgentsService {
   // ===================================================================
 
   async runConversacionInicial(ctx: RuntimeContext): Promise<string> {
-    const courses = await this.getStudentCourses(ctx);
-    const titles = JSON.stringify(courses.map((c) => c.title));
-    const system = `${CONVERSACION_INICIAL_PROMPT}\n\nCursos disponibles del estudiante: ${titles}`;
     return this.llm.runAgent({
-      system,
+      system: CONVERSACION_INICIAL_PROMPT,
       userMessage: ctx.message,
       history: [],
     });
