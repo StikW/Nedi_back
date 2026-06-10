@@ -69,6 +69,25 @@ export class StudentService {
     return phoneNumber.startsWith('+') ? phoneNumber.substring(1) : phoneNumber;
   }
 
+  /**
+   * El teléfono es único por curso (puede repetirse en otros cursos).
+   * El nombre sí puede repetirse libremente.
+   */
+  private async assertPhoneNotRegisteredInCourse(
+    phoneNumber: string,
+    courseId: string,
+    excludeStudentId?: string,
+  ): Promise<void> {
+    const normalizedPhone = this.normalizePhoneNumber(phoneNumber);
+    const existing = await this.findByPhoneAndCourse(normalizedPhone, courseId);
+    if (existing && existing.id !== excludeStudentId) {
+      throw new HttpException(
+        `Ya existe un estudiante con el número de teléfono ${phoneNumber} inscrito en este curso`,
+        HttpStatus.CONFLICT,
+      );
+    }
+  }
+
   async create(createStudentDto: CreateStudentDto, instructorId: string): Promise<Student> {
     // Validar que el curso existe y pertenece al instructor
     const course = await this.courseService.findOne(createStudentDto.courseId, instructorId);
@@ -80,15 +99,10 @@ export class StudentService {
     }
 
     const normalizedPhone = this.normalizePhoneNumber(createStudentDto.phoneNumber);
-    
-    // Verificar si ya existe un estudiante con el mismo teléfono en el mismo curso
-    const existingStudent = await this.findByPhoneAndCourse(normalizedPhone, createStudentDto.courseId);
-    if (existingStudent) {
-      throw new HttpException(
-        `Ya existe un estudiante con el número de teléfono ${createStudentDto.phoneNumber} inscrito en este curso`,
-        HttpStatus.CONFLICT
-      );
-    }
+    await this.assertPhoneNotRegisteredInCourse(
+      createStudentDto.phoneNumber,
+      createStudentDto.courseId,
+    );
 
     const studentId = uuidv4();
     
@@ -238,19 +252,14 @@ export class StudentService {
       );
     }
 
-    // Si se está actualizando el número de teléfono, verificar que no exista otro estudiante con el mismo teléfono en el mismo curso
     if (updateStudentDto.phoneNumber) {
       const normalizedPhone = this.normalizePhoneNumber(updateStudentDto.phoneNumber);
-      
-      // Solo verificar si el teléfono es diferente al actual
       if (normalizedPhone !== existingStudent.phoneNumber) {
-        const existingStudentWithPhone = await this.findByPhoneAndCourse(normalizedPhone, existingStudent.courseId);
-        if (existingStudentWithPhone && existingStudentWithPhone.id !== id) {
-          throw new HttpException(
-            `Ya existe un estudiante con el número de teléfono ${updateStudentDto.phoneNumber} inscrito en este curso`,
-            HttpStatus.CONFLICT
-          );
-        }
+        await this.assertPhoneNotRegisteredInCourse(
+          updateStudentDto.phoneNumber,
+          existingStudent.courseId,
+          id,
+        );
       }
     }
 
@@ -646,31 +655,40 @@ export class StudentService {
     let successCount = 0;
     let failedCount = 0;
 
-    // Verificar duplicados antes de crear
     const duplicateChecks = await Promise.all(
       students.map(async (student, index) => {
         const normalizedPhone = this.normalizePhoneNumber(student.phoneNumber);
         const existingStudent = await this.findByPhoneAndCourse(normalizedPhone, courseId);
         return { index, student, existingStudent };
-      })
+      }),
     );
 
-    // Preparar elementos para BatchWrite
     const putRequests: any[] = [];
     const currentTime = new Date().toISOString();
+    const seenPhonesInBatch = new Set<string>();
 
     duplicateChecks.forEach(({ index, student, existingStudent }) => {
+      const normalizedPhone = this.normalizePhoneNumber(student.phoneNumber);
+
       if (existingStudent) {
         failedCount++;
         errors.push({
           row: index + 1,
           name: student.name,
           phoneNumber: student.phoneNumber,
-          error: 'Ya existe un estudiante con este número de teléfono en el curso'
+          error: 'Ya existe un estudiante con este número de teléfono en el curso',
+        });
+      } else if (seenPhonesInBatch.has(normalizedPhone)) {
+        failedCount++;
+        errors.push({
+          row: index + 1,
+          name: student.name,
+          phoneNumber: student.phoneNumber,
+          error: 'Número de teléfono duplicado en el archivo de importación',
         });
       } else {
+        seenPhonesInBatch.add(normalizedPhone);
         const studentId = uuidv4();
-        const normalizedPhone = this.normalizePhoneNumber(student.phoneNumber);
         
         const studentData: Student = {
           id: studentId,

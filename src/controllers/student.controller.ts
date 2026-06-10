@@ -174,10 +174,10 @@ export class StudentController {
       }
 
       const existingStudent = await this.studentService.findByPhoneAndCourse(phoneNumber, courseId);
-      
+
       return {
         exists: !!existingStudent,
-        student: existingStudent || undefined
+        student: existingStudent || undefined,
       };
     } catch (error) {
       if (error instanceof HttpException) {
