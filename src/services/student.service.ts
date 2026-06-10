@@ -78,11 +78,10 @@ export class StudentService {
     courseId: string,
     excludeStudentId?: string,
   ): Promise<void> {
-    const normalizedPhone = this.normalizePhoneNumber(phoneNumber);
-    const existing = await this.findByPhoneAndCourse(normalizedPhone, courseId);
+    const existing = await this.findByPhoneAndCourse(phoneNumber, courseId);
     if (existing && existing.id !== excludeStudentId) {
       throw new HttpException(
-        `Ya existe un estudiante con el número de teléfono ${phoneNumber} inscrito en este curso`,
+        `No se puede registrar: ya hay un estudiante con el número ${phoneNumber} en este curso. El teléfono no se puede repetir dentro del mismo curso.`,
         HttpStatus.CONFLICT,
       );
     }
@@ -376,24 +375,36 @@ export class StudentService {
   }
 
   /**
-   * Buscar un estudiante por número de teléfono y curso específico
+   * Buscar un estudiante por número de teléfono y curso específico.
+   * Usa el GSI `phoneNumber-index` (un Scan con Limit falla: el límite se aplica
+   * antes del filtro y puede no devolver coincidencias aunque existan).
    */
   async findByPhoneAndCourse(phoneNumber: string, courseId: string): Promise<Student | null> {
-    // Normalizar el teléfono de búsqueda
     const normalizedPhone = this.normalizePhoneNumber(phoneNumber);
-    
-    const result = await this.dynamoClient.send(new ScanCommand({
-      TableName: STUDENTS_TABLE,
-      FilterExpression: 'phoneNumber = :phoneNumber AND courseId = :courseId',
-      ExpressionAttributeValues: {
-        ':phoneNumber': normalizedPhone,
-        ':courseId': courseId
-      },
-      Limit: 1 // Solo necesitamos saber si existe
-    }));
+    let lastEvaluatedKey: Record<string, unknown> | undefined;
 
-    const students = result.Items as Student[] || [];
-    return students.length > 0 ? students[0] : null;
+    do {
+      const result = await this.dynamoClient.send(
+        new QueryCommand({
+          TableName: STUDENTS_TABLE,
+          IndexName: 'phoneNumber-index',
+          KeyConditionExpression: 'phoneNumber = :phoneNumber',
+          ExpressionAttributeValues: {
+            ':phoneNumber': normalizedPhone,
+          },
+          ExclusiveStartKey: lastEvaluatedKey,
+        }),
+      );
+
+      const match = ((result.Items || []) as Student[]).find(
+        (student) => student.courseId === courseId,
+      );
+      if (match) return match;
+
+      lastEvaluatedKey = result.LastEvaluatedKey;
+    } while (lastEvaluatedKey);
+
+    return null;
   }
 
   /**
@@ -676,7 +687,8 @@ export class StudentService {
           row: index + 1,
           name: student.name,
           phoneNumber: student.phoneNumber,
-          error: 'Ya existe un estudiante con este número de teléfono en el curso',
+          error:
+            'No se puede registrar: ya hay un estudiante con este número en el curso. El teléfono no se puede repetir dentro del mismo curso.',
         });
       } else if (seenPhonesInBatch.has(normalizedPhone)) {
         failedCount++;
