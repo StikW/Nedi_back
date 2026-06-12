@@ -3,7 +3,9 @@ import { CourseModule, COURSE_MODULES_TABLE, ModuleStatus } from '../models/cour
 import { CreateCourseModuleDto, UpdateCourseModuleDto } from '../models/course-module.dto';
 import { DynamoDBDocumentClient, GetCommand, PutCommand, QueryCommand, DeleteCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { ModuleProgressService } from './module-progress.service';
+import { StudentProgressCleanupService } from './student-progress-cleanup.service';
 import { UploadsService } from './uploads.service';
+import { RagService } from './agent/rag.service';
 import { PaginationDto, PaginatedResponseDto } from '../models/pagination.dto';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -14,6 +16,8 @@ export class CourseModuleService {
     private readonly dynamoClient: DynamoDBDocumentClient,
     private readonly moduleProgressService: ModuleProgressService,
     private readonly uploadsService: UploadsService,
+    private readonly ragService: RagService,
+    private readonly studentProgressCleanupService: StudentProgressCleanupService,
   ) {}
 
   /**
@@ -191,15 +195,31 @@ export class CourseModuleService {
   async delete(id: string, courseId: string): Promise<{ 
     success: boolean; 
     deletedProgressCount: number; 
-    deletedFilesCount: number; 
+    deletedFilesCount: number;
+    deletedQuestionBanks: number;
+    deletedQuestionProgress: number;
+    deletedAgentStates: number;
   }> {
     const module = await this.findOneByCourse(id, courseId);
     if (!module) {
       throw new NotFoundException('Module not found or does not belong to the specified course');
     }
 
-    // Eliminar todos los progresos asociados al módulo
+    // Eliminar todos los progresos asociados al módulo (ModuleProgress)
     const deletedProgressCount = await this.moduleProgressService.deleteByModuleId(id);
+
+    // Banco de preguntas, Progress por pregunta y AgentState del módulo
+    let deletedQuestionBanks = 0;
+    let deletedQuestionProgress = 0;
+    let deletedAgentStates = 0;
+    try {
+      const purged = await this.studentProgressCleanupService.purgeModule(courseId, id);
+      deletedQuestionBanks = purged.questionBanks;
+      deletedQuestionProgress = purged.questionProgress;
+      deletedAgentStates = purged.agentState;
+    } catch (error) {
+      console.warn(`Warning: Failed to purge module data for ${id}:`, error.message);
+    }
 
     // Eliminar la carpeta del módulo en S3
     let deletedFilesCount = 0;
@@ -207,7 +227,13 @@ export class CourseModuleService {
       deletedFilesCount = await this.uploadsService.deleteModuleFolder(courseId, id);
     } catch (error) {
       console.warn(`Warning: Failed to delete S3 folder for module ${id}:`, error.message);
-      // No lanzamos error aquí para no interrumpir la eliminación del módulo
+    }
+
+    // Eliminar vectores del módulo en Pinecone
+    try {
+      await this.ragService.deleteModuleVectors(courseId, id);
+    } catch (error) {
+      console.warn(`Warning: Failed to delete Pinecone vectors for module ${id}:`, error.message);
     }
 
     // Eliminar el módulo
@@ -219,7 +245,10 @@ export class CourseModuleService {
     return { 
       success: true, 
       deletedProgressCount,
-      deletedFilesCount
+      deletedFilesCount,
+      deletedQuestionBanks,
+      deletedQuestionProgress,
+      deletedAgentStates,
     };
   }
 
@@ -293,34 +322,60 @@ export class CourseModuleService {
   async deleteByCourseId(courseId: string): Promise<{ 
     deletedModulesCount: number; 
     deletedProgressCount: number; 
-    deletedFilesCount: number; 
+    deletedFilesCount: number;
+    deletedCourseAssetsCount: number;
+    pineconeNamespaceDeleted: boolean;
   }> {
     // Buscar todos los módulos del curso
     const modules = await this.findAllByCourse(courseId);
     
-    if (modules.length === 0) {
-      return { deletedModulesCount: 0, deletedProgressCount: 0, deletedFilesCount: 0 };
-    }
-
     let totalDeletedProgress = 0;
     let totalDeletedFiles = 0;
 
-    // Eliminar cada módulo (esto ya elimina sus progresos y archivos S3)
-    for (const module of modules) {
-      try {
-        const result = await this.delete(module.id, courseId);
-        totalDeletedProgress += result.deletedProgressCount;
-        totalDeletedFiles += result.deletedFilesCount;
-      } catch (error) {
-        console.warn(`Warning: Failed to delete module ${module.id}:`, error.message);
-        // Continuar con el siguiente módulo
+    if (modules.length > 0) {
+      // Eliminar cada módulo (progresos, S3 por módulo, vectores por módulo, DynamoDB)
+      for (const module of modules) {
+        try {
+          const result = await this.delete(module.id, courseId);
+          totalDeletedProgress += result.deletedProgressCount;
+          totalDeletedFiles += result.deletedFilesCount;
+        } catch (error) {
+          console.warn(`Warning: Failed to delete module ${module.id}:`, error.message);
+        }
       }
     }
+
+    const external = await this.purgeCourseExternalAssets(courseId);
 
     return {
       deletedModulesCount: modules.length,
       deletedProgressCount: totalDeletedProgress,
-      deletedFilesCount: totalDeletedFiles
+      deletedFilesCount: totalDeletedFiles + external.deletedCourseAssetsCount,
+      deletedCourseAssetsCount: external.deletedCourseAssetsCount,
+      pineconeNamespaceDeleted: external.pineconeNamespaceDeleted,
     };
+  }
+
+  /** S3 restante del curso + namespace Pinecone (tras borrar módulos). */
+  private async purgeCourseExternalAssets(courseId: string): Promise<{
+    deletedCourseAssetsCount: number;
+    pineconeNamespaceDeleted: boolean;
+  }> {
+    let deletedCourseAssetsCount = 0;
+    try {
+      deletedCourseAssetsCount = await this.uploadsService.deleteCourseAssets(courseId);
+    } catch (error) {
+      console.warn(`Warning: Failed to delete S3 assets for course ${courseId}:`, error.message);
+    }
+
+    let pineconeNamespaceDeleted = false;
+    try {
+      await this.ragService.deleteCourseNamespace(courseId);
+      pineconeNamespaceDeleted = true;
+    } catch (error) {
+      console.warn(`Warning: Failed to delete Pinecone namespace for course ${courseId}:`, error.message);
+    }
+
+    return { deletedCourseAssetsCount, pineconeNamespaceDeleted };
   }
 }

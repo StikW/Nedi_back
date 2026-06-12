@@ -25,7 +25,7 @@ los estudiantes aprenden por **microlearning vía WhatsApp** con un agente de IA
 - `src/models/` — entidades + DTOs. Cada entidad define su `*_TABLE` con prefijo `DYNAMODB_TABLE_PREFIX`.
 - `src/modules/` — módulos NestJS; se registran en `src/app.module.ts`.
 - `src/core/config/env.config.ts` — todas las variables de entorno (namespace `env`).
-- `scripts/` — utilidades (creación de tablas, `reset-agent-progress.js` para reiniciar progreso).
+- `scripts/` — utilidades (creación de tablas, `reset-agent-progress.js`, `smoke-course-e2e.js` para validar curso/S3/Pinecone).
 - `docs/` — `API.md`, `DYNAMODB.md`.
 
 ## Agente Nedi (`src/services/agent/`)

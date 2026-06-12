@@ -10,6 +10,8 @@ import {
   progressPhoneKey,
   STUDENT_PROGRESS_TABLE,
   StudentQuestionProgress,
+  COURSE_MODULE_QUESTIONS_TABLE,
+  LEGACY_QUESTION_BANK_TABLE,
 } from '../models/course-module-questions.entity';
 import { ModuleProgressService } from './module-progress.service';
 
@@ -19,9 +21,15 @@ export interface EnrollmentPurgeResult {
   agentState: number;
 }
 
+export interface ModulePurgeResult {
+  questionBanks: number;
+  questionProgress: number;
+  agentState: number;
+}
+
 /**
  * Elimina el progreso del agente y de módulos asociado a un estudiante en un curso.
- * No toca CourseModuleQuestions (preguntas compartidas por módulo).
+ * Al borrar un módulo, {@link purgeModule} también elimina su banco de preguntas.
  */
 @Injectable()
 export class StudentProgressCleanupService {
@@ -78,6 +86,113 @@ export class StudentProgressCleanupService {
     );
 
     return { moduleProgress, questionProgress, agentState };
+  }
+
+  /**
+   * Limpia todo lo asociado a un módulo: banco de preguntas, avance por pregunta (Progress)
+   * y estados del agente que referencian ese módulo.
+   */
+  async purgeModule(courseId: string, moduleId: string): Promise<ModulePurgeResult> {
+    const questionBanks = await this.deleteQuestionBanks(courseId, moduleId);
+    const questionProgress = await this.deleteProgressByModuleId(moduleId);
+    const agentState = await this.deleteAgentStatesForModule(courseId, moduleId);
+
+    this.logger.log(
+      `Datos del módulo ${moduleId} purgados: ` +
+        `questionBanks=${questionBanks}, Progress=${questionProgress}, AgentState=${agentState}`,
+    );
+
+    return { questionBanks, questionProgress, agentState };
+  }
+
+  private async deleteQuestionBanks(courseId: string, moduleId: string): Promise<number> {
+    let deleted = 0;
+    const key = { courseId, moduleId };
+
+    for (const tableName of [COURSE_MODULE_QUESTIONS_TABLE, LEGACY_QUESTION_BANK_TABLE]) {
+      try {
+        await this.dynamoClient.send(
+          new DeleteCommand({
+            TableName: tableName,
+            Key: key,
+          }),
+        );
+        deleted++;
+      } catch {
+        /* tabla legacy puede no existir */
+      }
+    }
+
+    return deleted;
+  }
+
+  private async deleteProgressByModuleId(moduleId: string): Promise<number> {
+    const keys: Array<{ phoneNumber: string; moduleId: string }> = [];
+    let exclusiveStartKey: Record<string, unknown> | undefined;
+
+    do {
+      const result = await this.dynamoClient.send(
+        new ScanCommand({
+          TableName: STUDENT_PROGRESS_TABLE,
+          FilterExpression: 'moduleId = :moduleId',
+          ExpressionAttributeValues: { ':moduleId': moduleId },
+          ExclusiveStartKey: exclusiveStartKey,
+        }),
+      );
+
+      for (const item of (result.Items || []) as StudentQuestionProgress[]) {
+        keys.push({ phoneNumber: item.phoneNumber, moduleId: item.moduleId });
+      }
+
+      exclusiveStartKey = result.LastEvaluatedKey;
+    } while (exclusiveStartKey);
+
+    return this.batchDeleteByKeys(STUDENT_PROGRESS_TABLE, keys);
+  }
+
+  private async deleteAgentStatesForModule(courseId: string, moduleId: string): Promise<number> {
+    const toDelete: AgentState[] = [];
+    let exclusiveStartKey: Record<string, unknown> | undefined;
+
+    do {
+      const result = await this.dynamoClient.send(
+        new ScanCommand({
+          TableName: AGENT_STATE_TABLE,
+          FilterExpression: 'courseId = :courseId',
+          ExpressionAttributeValues: { ':courseId': courseId },
+          ExclusiveStartKey: exclusiveStartKey,
+        }),
+      );
+
+      for (const item of (result.Items || []) as AgentState[]) {
+        if (
+          item.moduleId === moduleId ||
+          item.offeredNextModuleId === moduleId ||
+          item.introShownForModuleId === moduleId
+        ) {
+          toDelete.push(item);
+        }
+      }
+
+      exclusiveStartKey = result.LastEvaluatedKey;
+    } while (exclusiveStartKey);
+
+    if (toDelete.length === 0) {
+      return 0;
+    }
+
+    let deleted = 0;
+    for (const state of toDelete) {
+      await this.dynamoClient.send(
+        new DeleteCommand({
+          TableName: AGENT_STATE_TABLE,
+          Key: { id: state.id },
+        }),
+      );
+      deleted++;
+    }
+
+    return deleted;
   }
 
   private async deleteQuestionProgress(

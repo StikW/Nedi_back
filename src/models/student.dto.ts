@@ -59,3 +59,13 @@ export class ImportStudentsResponseDto {
   }>;
   createdStudents: StudentResponseDto[];
 }
+
+export class ResetStudentProgressResponseDto {
+  studentId: string;
+  message: string;
+  purged: {
+    moduleProgress: number;
+    questionProgress: number;
+    agentState: number;
+  };
+}

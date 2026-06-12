@@ -156,6 +156,8 @@ export class CourseService {
     deletedModulesCount: number;
     deletedProgressCount: number;
     deletedFilesCount: number;
+    deletedCourseAssetsCount: number;
+    pineconeNamespaceDeleted: boolean;
   }> {
     // Primero verificar que el curso existe y pertenece al instructor
     const course = await this.findOne(id, instructorId);
@@ -166,7 +168,7 @@ export class CourseService {
     // Eliminar todos los estudiantes asociados al curso
     const deletedStudentsCount = await this.studentService.deleteByCourseId(id);
 
-    // Eliminar todos los módulos del curso (esto también elimina sus progresos y archivos S3)
+    // Eliminar todos los módulos del curso (progresos, S3, vectores, DynamoDB) + assets externos
     const modulesResult = await this.courseModuleService.deleteByCourseId(id);
 
     // Eliminar el curso
@@ -180,7 +182,9 @@ export class CourseService {
       deletedStudentsCount,
       deletedModulesCount: modulesResult.deletedModulesCount,
       deletedProgressCount: modulesResult.deletedProgressCount,
-      deletedFilesCount: modulesResult.deletedFilesCount
+      deletedFilesCount: modulesResult.deletedFilesCount + modulesResult.deletedCourseAssetsCount,
+      deletedCourseAssetsCount: modulesResult.deletedCourseAssetsCount,
+      pineconeNamespaceDeleted: modulesResult.pineconeNamespaceDeleted,
     };
   }
 

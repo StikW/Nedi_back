@@ -1,6 +1,12 @@
 import { Inject, Injectable, Logger, HttpException, HttpStatus, forwardRef } from '@nestjs/common';
 import { Student, STUDENTS_TABLE } from '../models/student.entity';
-import { CreateStudentDto, UpdateStudentDto, ImportStudentDto, ImportStudentsResponseDto } from '../models/student.dto';
+import {
+  CreateStudentDto,
+  UpdateStudentDto,
+  ImportStudentDto,
+  ImportStudentsResponseDto,
+  ResetStudentProgressResponseDto,
+} from '../models/student.dto';
 import {
   E164_PHONE_VALIDATION_MESSAGE,
   hasPhoneWhitespace,
@@ -167,8 +173,18 @@ export class StudentService {
       );
     }
 
-    const { cursor, sortOrder = 'asc' } = paginationDto;
-    
+    const { cursor, sortOrder = 'asc', search } = paginationDto;
+    const trimmedSearch = search?.trim();
+
+    if (trimmedSearch) {
+      return this.findStudentsByCourseSearchPaginated(
+        courseId,
+        trimmedSearch,
+        sortOrder,
+        cursor,
+      );
+    }
+
     // Fixed limit of 10 items per page
     const limit = 10;
     
@@ -224,6 +240,99 @@ export class StudentService {
         sortOrder
       }
     };
+  }
+
+  private async queryAllStudentsByCourse(courseId: string): Promise<Student[]> {
+    const students: Student[] = [];
+    let exclusiveStartKey: Record<string, unknown> | undefined;
+
+    do {
+      const result = await this.dynamoClient.send(
+        new QueryCommand({
+          TableName: STUDENTS_TABLE,
+          IndexName: 'courseId-index',
+          KeyConditionExpression: 'courseId = :courseId',
+          ExpressionAttributeValues: {
+            ':courseId': courseId,
+          },
+          ExclusiveStartKey: exclusiveStartKey,
+        }),
+      );
+
+      students.push(...((result.Items || []) as Student[]));
+      exclusiveStartKey = result.LastEvaluatedKey;
+    } while (exclusiveStartKey);
+
+    return students;
+  }
+
+  private matchesStudentSearch(student: Student, search: string): boolean {
+    const term = search.trim().toLowerCase();
+    if (!term) {
+      return true;
+    }
+
+    if (student.name.toLowerCase().includes(term)) {
+      return true;
+    }
+
+    const digitsOnly = (value: string) => value.replace(/\D/g, '');
+    const searchDigits = digitsOnly(term);
+    if (searchDigits && digitsOnly(student.phoneNumber).includes(searchDigits)) {
+      return true;
+    }
+
+    return false;
+  }
+
+  private findStudentsByCourseSearchPaginated(
+    courseId: string,
+    search: string,
+    sortOrder: 'asc' | 'desc',
+    cursor?: string,
+  ): Promise<PaginatedResponseDto<Student>> {
+    const limit = 10;
+    let offset = 0;
+
+    if (cursor) {
+      try {
+        const cursorData = JSON.parse(Buffer.from(cursor, 'base64').toString());
+        if (cursorData.search === search && cursorData.sortOrder === sortOrder) {
+          offset = Number(cursorData.offset) || 0;
+        }
+      } catch {
+        // Invalid cursor, start from beginning
+      }
+    }
+
+    return this.queryAllStudentsByCourse(courseId).then((allStudents) => {
+      const filtered = allStudents
+        .filter((student) => this.matchesStudentSearch(student, search))
+        .sort((a, b) => {
+          const comparison = a.name.localeCompare(b.name, 'es', { sensitivity: 'base' });
+          return sortOrder === 'asc' ? comparison : -comparison;
+        });
+
+      const page = filtered.slice(offset, offset + limit);
+      const hasNext = offset + limit < filtered.length;
+
+      let nextCursor: string | undefined;
+      if (hasNext) {
+        nextCursor = Buffer.from(
+          JSON.stringify({ offset: offset + limit, search, sortOrder }),
+        ).toString('base64');
+      }
+
+      return {
+        data: page,
+        pagination: {
+          limit,
+          hasNext,
+          nextCursor,
+          sortOrder,
+        },
+      };
+    });
   }
 
   async findOne(id: string): Promise<Student | null> {
@@ -314,10 +423,46 @@ export class StudentService {
    * para que una nueva inscripción en el mismo curso empiece desde cero.
    */
   private async purgeStudentEnrollmentData(student: Student): Promise<void> {
+    await this.purgeStudentProgress(student);
+  }
+
+  /**
+   * Reinicia el progreso del estudiante en su curso sin eliminar la matrícula.
+   * Al volver a interactuar con Nedi, empezará en el primer módulo publicado
+   * y la primera pregunta de ese módulo.
+   */
+  async resetProgress(id: string, instructorId: string): Promise<ResetStudentProgressResponseDto> {
+    const existingStudent = await this.findOne(id);
+    if (!existingStudent) {
+      throw new HttpException('Estudiante no encontrado', HttpStatus.NOT_FOUND);
+    }
+
+    const course = await this.courseService.findOne(existingStudent.courseId, instructorId);
+    if (!course) {
+      throw new HttpException(
+        'No tienes permisos para reiniciar el progreso de este estudiante',
+        HttpStatus.FORBIDDEN,
+      );
+    }
+
+    const purged = await this.purgeStudentProgress(existingStudent);
+
+    this.logger.log(
+      `Progreso reiniciado para estudiante ${id} (${existingStudent.phoneNumber}) en curso ${existingStudent.courseId}`,
+    );
+
+    return {
+      studentId: id,
+      message: 'Progreso reiniciado. El estudiante volverá al primer módulo y primera pregunta.',
+      purged,
+    };
+  }
+
+  private async purgeStudentProgress(student: Student) {
     const modules = await this.courseModuleService.findAllByCourse(student.courseId);
     const moduleIds = modules.map((m) => m.id);
 
-    await this.studentProgressCleanupService.purgeEnrollment(
+    return this.studentProgressCleanupService.purgeEnrollment(
       student.phoneNumber,
       student.courseId,
       moduleIds,

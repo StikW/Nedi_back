@@ -10,7 +10,7 @@ import { CourseModulesModule } from './course-modules.module';
   imports: [
     AuthModule, 
     forwardRef(() => StudentsModule),
-    forwardRef(() => CourseModulesModule)
+    forwardRef(() => CourseModulesModule),
   ],
   controllers: [CourseController, PublicCourseController],
   providers: [CourseService],

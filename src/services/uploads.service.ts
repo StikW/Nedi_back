@@ -190,56 +190,88 @@ export class UploadsService {
   }
 
   /**
-   * Delete all files in a module folder from S3
-   * Note: S3 doesn't have "folders" - they're just prefixes. We need to delete all objects with the prefix.
+   * Delete all files in a module folder from S3 (bucket de módulos).
    */
   async deleteModuleFolder(courseId: string, moduleId: string): Promise<number> {
     const prefix = `courses/${courseId}/modules/${moduleId}/`;
+    return this.deleteObjectsWithPrefix(this.modulesBucketName, prefix);
+  }
+
+  /**
+   * Elimina todos los objetos del curso en ambos buckets (imagen del curso + restos de módulos).
+   */
+  async deleteCourseAssets(courseId: string): Promise<number> {
+    const prefix = `courses/${courseId}/`;
+    let total = 0;
+    total += await this.deleteObjectsWithPrefix(this.courseBucketName, prefix);
+    total += await this.deleteObjectsWithPrefix(this.modulesBucketName, prefix);
+    return total;
+  }
+
+  /** Lista keys bajo un prefijo (para diagnósticos / E2E). */
+  async listObjectsWithPrefix(bucket: string, prefix: string): Promise<string[]> {
+    const keys: string[] = [];
+    let continuationToken: string | undefined;
+
+    do {
+      const listResult = await this.s3Client.send(
+        new ListObjectsV2Command({
+          Bucket: bucket,
+          Prefix: prefix,
+          MaxKeys: 1000,
+          ContinuationToken: continuationToken,
+        }),
+      );
+
+      for (const obj of listResult.Contents || []) {
+        if (obj.Key && !obj.Key.endsWith('/')) {
+          keys.push(obj.Key);
+        }
+      }
+      continuationToken = listResult.NextContinuationToken;
+    } while (continuationToken);
+
+    return keys;
+  }
+
+  private async deleteObjectsWithPrefix(bucket: string, prefix: string): Promise<number> {
     let totalDeleted = 0;
-    
+
     try {
       let continuationToken: string | undefined;
-      
-      do {
-        // List objects with pagination
-        const listCommand = new ListObjectsV2Command({
-          Bucket: this.modulesBucketName,
-          Prefix: prefix,
-          MaxKeys: 1000, // Maximum objects per request
-          ContinuationToken: continuationToken,
-        });
 
-        const listResult = await this.s3Client.send(listCommand);
-        
+      do {
+        const listResult = await this.s3Client.send(
+          new ListObjectsV2Command({
+            Bucket: bucket,
+            Prefix: prefix,
+            MaxKeys: 1000,
+            ContinuationToken: continuationToken,
+          }),
+        );
+
         if (!listResult.Contents || listResult.Contents.length === 0) {
-          break; // No more objects to delete
+          break;
         }
 
-        // Prepare delete requests for this batch
-        const objectsToDelete = listResult.Contents.map(obj => ({
+        const objectsToDelete = listResult.Contents.map((obj) => ({
           Key: obj.Key!,
         }));
 
-        // Delete this batch immediately
-        const deleteCommand = new DeleteObjectsCommand({
-          Bucket: this.modulesBucketName,
-          Delete: {
-            Objects: objectsToDelete,
-          },
-        });
-
-        await this.s3Client.send(deleteCommand);
+        await this.s3Client.send(
+          new DeleteObjectsCommand({
+            Bucket: bucket,
+            Delete: { Objects: objectsToDelete },
+          }),
+        );
         totalDeleted += objectsToDelete.length;
-        
-        // Set continuation token for next iteration
         continuationToken = listResult.NextContinuationToken;
-        
       } while (continuationToken);
-      
+
       return totalDeleted;
-    } catch (error) {
-      console.error('Error deleting module folder from S3:', error);
-      throw new Error(`Failed to delete module folder: ${error.message}`);
+    } catch (error: any) {
+      console.error(`Error deleting S3 prefix ${prefix} in ${bucket}:`, error);
+      throw new Error(`Failed to delete S3 prefix: ${error.message}`);
     }
   }
 }

@@ -24,13 +24,22 @@ export class VectorizationController {
 
   @Post('module/trigger-vectorization')
   async triggerVectorization(
-    @Body() body: { courseId: string; moduleId: string },
+    @Body() body: { courseId: string; moduleId: string; sync?: boolean },
     @Request() req: RequestWithUser,
   ) {
-    const { courseId, moduleId } = body;
+    const { courseId, moduleId, sync } = body;
     const course = await this.courseService.findOne(courseId, req.user.id);
     if (!course) {
       throw new ForbiddenException('Curso no encontrado o acceso denegado');
+    }
+
+    const allowSync = process.env.E2E_SMOKE_ALLOW_SYNC === 'true';
+    if (sync && allowSync) {
+      const result = await this.vectorizationService.ingestModule(courseId, moduleId);
+      console.log(
+        `[vectorizacion] modulo ${moduleId} (sync): ${result.files} archivos, ${result.chunks} fragmentos`,
+      );
+      return result;
     }
 
     // Fire-and-forget: la extraccion + embeddings puede tardar; no bloqueamos

@@ -1,4 +1,4 @@
-import { IsOptional, IsNumber, Min, Max } from 'class-validator';
+import { IsOptional, IsNumber, Min, Max, IsString, MaxLength } from 'class-validator';
 import { Type } from 'class-transformer';
 
 /**
@@ -27,6 +27,12 @@ export class PaginationDto {
   @Min(1)
   @Max(100)
   limit?: number;
+
+  /** Filtro de búsqueda (nombre o teléfono) */
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  search?: string;
 }
 
 /**

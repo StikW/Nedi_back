@@ -115,4 +115,54 @@ export class RagService {
     }
     return vectors.length;
   }
+
+  /** Elimina todos los vectores del curso (namespace = courseId). */
+  async deleteCourseNamespace(courseId: string): Promise<void> {
+    if (!this.pinecone) {
+      this.logger.warn('Pinecone no configurado: no se eliminan vectores del curso');
+      return;
+    }
+    try {
+      await this.pinecone.index(this.indexName).namespace(courseId).deleteAll();
+      this.logger.log(`Namespace Pinecone eliminado: ${courseId}`);
+    } catch (err: any) {
+      this.logger.error(`Error eliminando namespace Pinecone ${courseId}: ${err?.message || err}`);
+      throw err;
+    }
+  }
+
+  /** Elimina vectores de un módulo concreto dentro del namespace del curso. */
+  async deleteModuleVectors(courseId: string, moduleId: string): Promise<void> {
+    if (!this.pinecone) {
+      this.logger.warn('Pinecone no configurado: no se eliminan vectores del módulo');
+      return;
+    }
+    try {
+      await this.pinecone
+        .index(this.indexName)
+        .namespace(courseId)
+        .deleteMany({ filter: { module: { $eq: moduleId } } });
+      this.logger.log(`Vectores Pinecone eliminados: curso ${courseId}, módulo ${moduleId}`);
+    } catch (err: any) {
+      this.logger.error(
+        `Error eliminando vectores del módulo ${moduleId}: ${err?.message || err}`,
+      );
+      throw err;
+    }
+  }
+
+  /** Cuenta registros en el namespace del curso (útil para E2E). */
+  async countCourseVectors(courseId: string): Promise<number> {
+    if (!this.pinecone) {
+      return 0;
+    }
+    try {
+      const stats = await this.pinecone.index(this.indexName).describeIndexStats();
+      const ns = stats.namespaces?.[courseId];
+      return ns?.recordCount ?? 0;
+    } catch (err: any) {
+      this.logger.error(`Error contando vectores de ${courseId}: ${err?.message || err}`);
+      return 0;
+    }
+  }
 }

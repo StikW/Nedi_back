@@ -7,6 +7,7 @@ import { StudentsModule } from './students.module';
 import { CourseModulesModule } from './course-modules.module';
 import { ModuleProgressModule } from './module-progress.module';
 import { UploadsModule } from './uploads.module';
+import { RagModule } from './rag.module';
 
 import { AgentWebhookController } from '../controllers/agent-webhook.controller';
 import { AgentEvolutionController } from '../controllers/agent-evolution.controller';
@@ -16,7 +17,6 @@ import { TenantService } from '../services/agent/tenant.service';
 import { EvolutionService } from '../services/agent/evolution.service';
 import { EvolutionAdminService } from '../services/agent/evolution-admin.service';
 import { MediaService } from '../services/agent/media.service';
-import { RagService } from '../services/agent/rag.service';
 import { VectorizationService } from '../services/agent/vectorization.service';
 import { AgentStateService } from '../services/agent/agent-state.service';
 import { LlmService } from '../services/agent/llm.service';
@@ -40,6 +40,7 @@ import { AgentOrchestratorService } from '../services/agent/agent-orchestrator.s
     CourseModulesModule,
     ModuleProgressModule,
     UploadsModule,
+    RagModule,
   ],
   controllers: [AgentWebhookController, AgentEvolutionController, VectorizationController],
   providers: [
@@ -47,7 +48,6 @@ import { AgentOrchestratorService } from '../services/agent/agent-orchestrator.s
     EvolutionService,
     EvolutionAdminService,
     MediaService,
-    RagService,
     VectorizationService,
     AgentStateService,
     LlmService,
@@ -57,6 +57,6 @@ import { AgentOrchestratorService } from '../services/agent/agent-orchestrator.s
     MessageBufferService,
     AgentOrchestratorService,
   ],
-  exports: [VectorizationService, AgentOrchestratorService],
+  exports: [VectorizationService, AgentOrchestratorService, RagModule],
 })
 export class AgentModule {}

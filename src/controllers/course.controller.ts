@@ -84,11 +84,13 @@ export class CourseController {
     const result = await this.courseService.delete(id, req.user.id);
     
     return {
-      message: `Course deleted successfully. Also deleted ${result.deletedStudentsCount} students, ${result.deletedModulesCount} modules, ${result.deletedProgressCount} progress records, and ${result.deletedFilesCount} files from S3.`,
+      message: `Course deleted successfully. Also deleted ${result.deletedStudentsCount} students, ${result.deletedModulesCount} modules, ${result.deletedProgressCount} progress records, ${result.deletedFilesCount} files from S3${result.pineconeNamespaceDeleted ? ', and Pinecone namespace' : ''}.`,
       deletedStudentsCount: result.deletedStudentsCount,
       deletedModulesCount: result.deletedModulesCount,
       deletedProgressCount: result.deletedProgressCount,
-      deletedFilesCount: result.deletedFilesCount
+      deletedFilesCount: result.deletedFilesCount,
+      deletedCourseAssetsCount: result.deletedCourseAssetsCount,
+      pineconeNamespaceDeleted: result.pineconeNamespaceDeleted,
     };
   }
 

@@ -129,9 +129,15 @@ export class CourseModuleController {
     const result = await this.courseModuleService.delete(id, courseId);
     
     return {
-      message: `Module deleted successfully. Also deleted ${result.deletedProgressCount} associated progress records and ${result.deletedFilesCount} files from S3.`,
+      message:
+        `Module deleted successfully. Also deleted ${result.deletedProgressCount} module progress records, ` +
+        `${result.deletedQuestionProgress} question progress records, ${result.deletedQuestionBanks} question bank(s), ` +
+        `${result.deletedAgentStates} agent state(s), and ${result.deletedFilesCount} files from S3.`,
       deletedProgressCount: result.deletedProgressCount,
-      deletedFilesCount: result.deletedFilesCount
+      deletedFilesCount: result.deletedFilesCount,
+      deletedQuestionBanks: result.deletedQuestionBanks,
+      deletedQuestionProgress: result.deletedQuestionProgress,
+      deletedAgentStates: result.deletedAgentStates,
     };
   }
 

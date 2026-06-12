@@ -17,7 +17,12 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { StudentService } from '../services/student.service';
-import { CreateStudentDto, UpdateStudentDto, ImportStudentsResponseDto } from '../models/student.dto';
+import {
+  CreateStudentDto,
+  UpdateStudentDto,
+  ImportStudentsResponseDto,
+  ResetStudentProgressResponseDto,
+} from '../models/student.dto';
 import { StudentStatsDto } from '../models/student-stats.dto';
 import { Student } from '../models/student.entity';
 import { JwtAuthGuard } from '../strategies/jwt-auth.guard';
@@ -60,8 +65,8 @@ export class StudentController {
     @Request() req: RequestWithUser
   ): Promise<Student[] | PaginatedResponseDto<Student>> {
     try {
-      // Si se proporcionan parámetros de paginación, usar paginación
-      if (paginationDto.cursor || paginationDto.sortOrder) {
+      // Si se proporcionan parámetros de paginación o búsqueda, usar paginación
+      if (paginationDto.cursor || paginationDto.sortOrder || paginationDto.search) {
         return await this.studentService.findAllByCoursePaginated(courseId, req.user.id, paginationDto);
       }
       
@@ -109,6 +114,24 @@ export class StudentController {
       throw new HttpException(
         'Error al actualizar el estudiante',
         HttpStatus.INTERNAL_SERVER_ERROR
+      );
+    }
+  }
+
+  @Post(':id/reset-progress')
+  async resetProgress(
+    @Param('id') id: string,
+    @Request() req: RequestWithUser,
+  ): Promise<ResetStudentProgressResponseDto> {
+    try {
+      return await this.studentService.resetProgress(id, req.user.id);
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new HttpException(
+        'Error al reiniciar el progreso del estudiante',
+        HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }
