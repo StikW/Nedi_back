@@ -14,7 +14,13 @@ Requisitos:
 - Genera entre 5 y 7 preguntas por módulo.
 - Usa diferentes tipos de preguntas: verdadero/falso, completar la frase, relación de conceptos, opción múltiple, etc.
 - Cada pregunta debe incluir opciones de respuesta (si aplica) y la respuesta correcta.
-- Para tipo "relacionar": usa campos separados "items" (lista numerada a emparejar) y "descripciones" (lista con letras A, B, C...). NO incluyas la respuesta correcta ni pares ya resueltos en "opciones". "pregunta" solo debe tener la instrucción breve.
+- Para tipo "relacionar":
+  - "items": lista de conceptos SIN numeración inicial (solo el texto del concepto).
+  - "descripciones": lista de definiciones con letras A), B), C)... en orden alfabético.
+  - "respuesta_correcta": pares item-letra (ej. "1-C, 2-A, 3-B, 4-D") donde el emparejamiento NO sea secuencial (evita 1-A, 2-B, 3-C...).
+  - NO incluyas la respuesta correcta ni pares ya resueltos en "opciones".
+  - "pregunta" solo debe tener la instrucción breve.
+- Para tipo "completar" u "opcion_multiple": la respuesta debe estar respaldada por un dato explícito del material (cifra, nombre, plazo, etc.); evita preguntas cuyo dato clave no aparezca en el contenido del módulo.
 - Las preguntas deben ser objetivas y medibles, nunca de opinión.
 - Todas las preguntas deben poder responderse únicamente con la información contenida en el material proporcionado. No inventes ni asumas conocimiento externo.
 - Las preguntas no deben ser superficiales, deben tener cierto grado de complejidad.
@@ -107,7 +113,7 @@ export class QuestionsService {
       userMessage: `Contenido del módulo:\n${material}`,
     });
 
-    const questions = this.parseQuestions(raw);
+    const questions = this.postProcessQuestions(this.parseQuestions(raw));
     if (questions.length > 0) {
       await this.agentState.saveQuestionBank(courseId, moduleId, questions);
     } else {
@@ -127,4 +133,89 @@ export class QuestionsService {
       return [];
     }
   }
+
+  /** Normaliza preguntas de relacionar: limpia numeración y baraja descripciones. */
+  private postProcessQuestions(questions: ModuleQuestion[]): ModuleQuestion[] {
+    return questions.map((q) => this.normalizeRelacionarQuestion(q));
+  }
+
+  private normalizeRelacionarQuestion(question: ModuleQuestion): ModuleQuestion {
+    const isRelacionar =
+      question.tipo === 'relacionar' || /relacionar/i.test(question.pregunta || '');
+    if (!isRelacionar) return question;
+
+    const rawItems = question.items?.length ? question.items : [];
+    const rawDescriptions = question.descripciones?.length ? question.descripciones : [];
+    if (rawItems.length < 2 || rawDescriptions.length < 2) return question;
+
+    const items = rawItems.map((item) => stripLeadingNumbering(item));
+    const descriptionTexts = rawDescriptions.map((line) => stripLetterPrefix(line));
+
+    const shuffledIndices = shuffleIndices(descriptionTexts.length);
+    const shuffledDescriptions = shuffledIndices.map(
+      (origIdx, newIdx) => `${indexToLetter(newIdx)}) ${descriptionTexts[origIdx]}`,
+    );
+
+    const answerPairs = parseRelacionarAnswer(String(question.respuesta_correcta || ''));
+    const remappedAnswer =
+      answerPairs.length > 0
+        ? answerPairs
+            .map(({ item, letter }) => {
+              const origIdx = letterToIndex(letter);
+              const newIdx = shuffledIndices.indexOf(origIdx);
+              return newIdx >= 0 ? `${item}-${indexToLetter(newIdx)}` : null;
+            })
+            .filter(Boolean)
+            .join(', ')
+        : question.respuesta_correcta;
+
+    return {
+      ...question,
+      tipo: 'relacionar',
+      items,
+      descripciones: shuffledDescriptions,
+      respuesta_correcta: remappedAnswer,
+    };
+  }
+}
+
+function stripLeadingNumbering(text: string): string {
+  return text.trim().replace(/^(\d+\.\s*)+/, '').trim();
+}
+
+function stripLetterPrefix(text: string): string {
+  return text.trim().replace(/^[A-Z][).:\-]\s*/i, '').trim();
+}
+
+function letterToIndex(letter: string): number {
+  return letter.toUpperCase().charCodeAt(0) - 65;
+}
+
+function indexToLetter(index: number): string {
+  return String.fromCharCode(65 + index);
+}
+
+function shuffleIndices(length: number): number[] {
+  const indices = Array.from({ length }, (_, i) => i);
+  for (let i = indices.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [indices[i], indices[j]] = [indices[j], indices[i]];
+  }
+  if (length > 2 && isSequentialShuffle(indices)) {
+    return shuffleIndices(length);
+  }
+  return indices;
+}
+
+/** Evita que la columna B quede en el mismo orden A,B,C... tras barajar. */
+function isSequentialShuffle(indices: number[]): boolean {
+  return indices.every((origIdx, newIdx) => origIdx === newIdx);
+}
+
+function parseRelacionarAnswer(raw: string): { item: string; letter: string }[] {
+  const pairs: { item: string; letter: string }[] = [];
+  for (const match of raw.matchAll(/(\d+)\s*[-–:→>]\s*([A-Z])/gi)) {
+    pairs.push({ item: match[1], letter: match[2].toUpperCase() });
+  }
+  return pairs;
 }

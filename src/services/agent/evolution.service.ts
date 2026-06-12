@@ -47,11 +47,13 @@ export class EvolutionService {
     to: string,
     text: string,
     presenceDelayMs = 1200,
+    options: { linkPreview?: boolean } = {},
   ): Promise<void> {
     await this.sendPresence(cfg, to, 'composing', presenceDelayMs);
     await this.post(cfg, `/message/sendText/${cfg.instance}`, {
       number: to,
       text,
+      ...(options.linkPreview === false ? { linkPreview: false } : {}),
     });
   }
 

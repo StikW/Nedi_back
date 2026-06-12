@@ -185,6 +185,7 @@ export class AgentOrchestratorService {
         recipientJid || phoneNumber,
         reply,
         presenceDelayMs,
+        { linkPreview: false },
       );
     } catch (err: any) {
       this.logger.error(`No se pudo enviar respuesta a ${phoneNumber}: ${err?.message || err}`);

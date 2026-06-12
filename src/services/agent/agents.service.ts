@@ -309,7 +309,7 @@ export class AgentsService {
     const questionText = this.formatQuestion(current.question, current.index, current.total);
 
     // Agente Resumen -> TTS -> audio, luego la pregunta en texto (flujo n8n)
-    await this.sendResumenAudio(ctx, questionText, courseId, moduleId);
+    await this.sendResumenAudio(ctx, current.question, current.index, current.total, courseId, moduleId);
 
     await this.refreshLastQuestion(ctx, courseId, moduleId, questionText);
     return questionText;
@@ -354,7 +354,7 @@ export class AgentsService {
       ctx.tenant.instructor.id,
       { awaitingPostAnswerAction: true },
     );
-    return answer;
+    return this.sanitizeFeedback(answer);
   }
 
   // ===================================================================
@@ -381,12 +381,21 @@ export class AgentsService {
       ? `Pregunta que el estudiante acaba de responder o sobre la que pide aclaración:\n${questionContext}\n\nMensaje del estudiante: ${ctx.message}`
       : ctx.message;
 
-    return this.llm.runAgent({
+    const raw = await this.llm.runAgent({
       system: EXPLICAR_PROMPT,
       userMessage,
       history: ctx.history,
       tools,
     });
+
+    ctx.state = await this.agentState.upsertState(
+      ctx.tenant.evolution.instance,
+      ctx.phoneNumber,
+      ctx.tenant.instructor.id,
+      { awaitingPostAnswerAction: true },
+    );
+
+    return this.sanitizeExplanation(raw);
   }
 
   // ===================================================================
@@ -432,17 +441,71 @@ export class AgentsService {
         return true;
       }
 
-      // n8n: cualquier URL en `content` se manda como video (sin exigir .mp4 en la ruta)
-      await this.evolution.sendVideo(ctx.tenant.evolution, to, mediaUrl, {
-        caption: this.buildModuleVideoCaption(module),
-        fileName: `video-${module.id}.mp4`,
-      });
-      this.logger.log(`Video de modulo enviado moduleId=${module.id}`);
-      return true;
+      const probe = await this.probeVideoUrl(mediaUrl);
+      if (!probe.ok) {
+        this.logger.warn(
+          `URL de video no parece válida moduleId=${module.id} type=${probe.contentType} size=${probe.size}`,
+        );
+        const base64 = await this.fetchVideoAsBase64(mediaUrl);
+        if (base64) {
+          await this.evolution.sendMedia(ctx.tenant.evolution, to, base64, {
+            mediatype: 'video',
+            caption: this.buildModuleVideoCaption(module),
+            fileName: `video-${module.id}.mp4`,
+            mimetype: 'video/mp4',
+            delay: 2000,
+          });
+          this.logger.log(`Video de modulo enviado como base64 moduleId=${module.id}`);
+          return true;
+        }
+        await this.sendModuleIntroAsTextLink(ctx, module, mediaUrl);
+        return true;
+      }
+
+      try {
+        await this.evolution.sendVideo(ctx.tenant.evolution, to, mediaUrl, {
+          caption: this.buildModuleVideoCaption(module),
+          fileName: `video-${module.id}.mp4`,
+        });
+        this.logger.log(`Video de modulo enviado moduleId=${module.id}`);
+        return true;
+      } catch (sendErr: any) {
+        this.logger.warn(
+          `sendVideo fallo moduleId=${module.id}, intentando base64: ${sendErr?.message || sendErr}`,
+        );
+        const base64 = await this.fetchVideoAsBase64(mediaUrl);
+        if (base64) {
+          await this.evolution.sendMedia(ctx.tenant.evolution, to, base64, {
+            mediatype: 'video',
+            caption: this.buildModuleVideoCaption(module),
+            fileName: `video-${module.id}.mp4`,
+            mimetype: 'video/mp4',
+            delay: 2000,
+          });
+          this.logger.log(`Video de modulo enviado como base64 (fallback) moduleId=${module.id}`);
+          return true;
+        }
+        await this.sendModuleIntroAsTextLink(ctx, module, mediaUrl);
+        return true;
+      }
     } catch (err: any) {
       this.logger.warn(`No se pudo enviar intro del modulo ${module.id}: ${err?.message || err}`);
       return false;
     }
+  }
+
+  private async sendModuleIntroAsTextLink(
+    ctx: RuntimeContext,
+    module: CourseModule,
+    mediaUrl: string,
+  ): Promise<void> {
+    await this.evolution.sendText(
+      ctx.tenant.evolution,
+      this.replyTo(ctx),
+      `${this.buildModuleVideoCaption(module)}\n\nNo pude reproducir el video aquí. Ábrelo con este enlace:\n${mediaUrl}`,
+      1200,
+      { linkPreview: true },
+    );
   }
 
   /**
@@ -484,16 +547,86 @@ export class AgentsService {
   private async resolveModuleContentUrl(module: CourseModule): Promise<string | null> {
     const raw = (module.content || '').trim();
     if (!raw) return null;
-    if (/^https?:\/\//i.test(raw)) return raw;
+    if (/^https?:\/\//i.test(raw)) return this.normalizeVideoUrl(raw);
 
     const key = raw.replace(/^\//, '');
+    const fullKey = key.startsWith('courses/')
+      ? key
+      : `courses/${module.courseId}/modules/${module.id}/${key.split('/').pop() || key}`;
     try {
-      return await this.uploads.getModuleDownloadUrl(module.courseId, module.id, key, 3600);
+      return await this.uploads.getModuleDownloadUrl(module.courseId, module.id, fullKey, 3600);
     } catch {
       const bucket = this.configService.get<string>('S3_BUCKET_MODULES');
       const region = this.configService.get<string>('AWS_REGION') || 'us-east-1';
-      return bucket ? `https://${bucket}.s3.${region}.amazonaws.com/${key}` : null;
+      return bucket ? `https://${bucket}.s3.${region}.amazonaws.com/${fullKey}` : null;
     }
+  }
+
+  /** Convierte enlaces de Google Drive compartidos a descarga directa. */
+  private normalizeVideoUrl(url: string): string {
+    const trimmed = url.trim();
+    if (/drive\.usercontent\.google\.com/i.test(trimmed)) return trimmed;
+    if (/catbox\.moe/i.test(trimmed)) return trimmed;
+
+    const fileIdMatch =
+      trimmed.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/) ||
+      trimmed.match(/drive\.google\.com\/open\?[^#]*\bid=([a-zA-Z0-9_-]+)/) ||
+      trimmed.match(/[?&]id=([a-zA-Z0-9_-]{10,})/);
+    if (fileIdMatch) {
+      return `https://drive.usercontent.google.com/download?id=${fileIdMatch[1]}&export=download&authuser=0`;
+    }
+    return trimmed;
+  }
+
+  private async probeVideoUrl(
+    url: string,
+  ): Promise<{ ok: boolean; contentType?: string; size?: number }> {
+    try {
+      const res = await fetch(url, { method: 'HEAD', redirect: 'follow', signal: AbortSignal.timeout(8000) });
+      const contentType = res.headers.get('content-type') || '';
+      const size = parseInt(res.headers.get('content-length') || '0', 10) || undefined;
+      if (!res.ok) return { ok: false, contentType, size };
+      if (contentType.includes('text/html') && (!size || size < 500_000)) {
+        return { ok: false, contentType, size };
+      }
+      if (
+        contentType.includes('video') ||
+        contentType.includes('octet-stream') ||
+        (size && size > 500_000)
+      ) {
+        return { ok: true, contentType, size };
+      }
+      return { ok: true, contentType, size };
+    } catch {
+      return { ok: false };
+    }
+  }
+
+  private async fetchVideoAsBase64(url: string, maxBytes = 50 * 1024 * 1024): Promise<string | null> {
+    try {
+      const res = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(60000) });
+      if (!res.ok) return null;
+      const buf = Buffer.from(await res.arrayBuffer());
+      if (buf.length > maxBytes) return null;
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.includes('text/html') && buf.length < 500_000) return null;
+      return buf.toString('base64');
+    } catch {
+      return null;
+    }
+  }
+
+  private sanitizeExplanation(text: string): string {
+    let cleaned = text
+      .replace(/https?:\/\/[^\s]+/gi, '')
+      .replace(/[\t ]{2,}/g, ' ')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+    if (!/siguiente|continuar/i.test(cleaned.slice(-160))) {
+      cleaned +=
+        '\n\n¿Quieres continuar con la *siguiente pregunta*? Responde *siguiente* o *continuar*.';
+    }
+    return cleaned;
   }
 
   private isYoutubeUrl(url: string): boolean {
@@ -511,22 +644,26 @@ export class AgentsService {
   /** Agente Resumen + TTS antes de mostrar la pregunta (flujo n8n). */
   private async sendResumenAudio(
     ctx: RuntimeContext,
-    questionText: string,
+    question: ModuleQuestion,
+    index: number,
+    total: number,
     courseId: string,
     moduleId: string,
   ): Promise<void> {
     try {
+      const resumenContext = this.buildResumenUserMessage(question, index, total);
       const resumen = await this.llm.runAgent({
         system: RESUMEN_PROMPT,
-        userMessage: `Organiza una explicacion introductoria breve para esta pregunta:\n${questionText}`,
+        userMessage: resumenContext,
         tools: [
           this.ragTool(
             'vector_questions',
-            'Obtiene material del modulo para la explicacion previa a la pregunta.',
+            'Busca en el material del módulo los hechos concretos (cifras, nombres, pasos, requisitos) necesarios para responder la pregunta.',
             ctx,
             courseId,
             moduleId,
-            questionText,
+            this.buildResumenSearchQuery(question),
+            8,
           ),
         ],
       });
@@ -538,6 +675,61 @@ export class AgentsService {
     } catch (err: any) {
       this.logger.warn(`No se pudo enviar audio-resumen: ${err?.message || err}`);
     }
+  }
+
+  /** Contexto estructurado para el agente previo (independiente del dominio del curso). */
+  private buildResumenUserMessage(question: ModuleQuestion, index: number, total: number): string {
+    const formatted = this.formatQuestion(question, index, total);
+    const lines = [
+      `Pregunta ${index + 1} de ${total}`,
+      `Tipo: ${question.tipo || 'desconocido'}`,
+      `Enunciado: ${question.pregunta}`,
+    ];
+
+    if (question.opciones?.length) {
+      lines.push('Opciones:', ...question.opciones.map((o, i) => `${i + 1}. ${o}`));
+    }
+    if (question.items?.length) {
+      lines.push('Elementos a relacionar:', ...question.items.map((item, i) => `${i + 1}. ${item}`));
+    }
+    if (question.descripciones?.length) {
+      lines.push('Descripciones:', ...question.descripciones);
+    }
+
+    lines.push(
+      '',
+      'Texto que verá el estudiante:',
+      formatted,
+      '',
+      'Tu audio debe cubrir los datos concretos del material que permitan responder esta pregunta.',
+      'Si hay espacios en blanco o cifras implícitas, menciónalas explícitamente según el material del módulo.',
+    );
+
+    return lines.join('\n');
+  }
+
+  /** Consulta RAG orientada a hechos evaluables, válida para cualquier temática. */
+  private buildResumenSearchQuery(question: ModuleQuestion): string {
+    const parts = [question.pregunta, question.tipo || ''];
+    if (question.opciones?.length) parts.push(...question.opciones);
+    if (question.items?.length) parts.push(...question.items);
+    if (question.descripciones?.length) parts.push(...question.descripciones);
+    return parts.filter(Boolean).join('. ');
+  }
+
+  private sanitizeFeedback(text: string): string {
+    let cleaned = text.trim();
+    if (/responde\s+[12]\b|opción\s+[12]\b|opcion\s+[12]\b|\b1\)\s*explicar|\b2\)\s*continuar/i.test(cleaned)) {
+      cleaned = cleaned
+        .replace(/¿\s*qué\s+quieres\s+hacer[\s\S]*?responde\s+1\s+o\s+2\.?/gi, '')
+        .replace(/responde\s+1\s+o\s+2\.?/gi, '')
+        .trim();
+      if (!/siguiente|continuar|profundiz|explicar/i.test(cleaned.slice(-200))) {
+        cleaned +=
+          '\n\n¿Quieres que profundice un poco más o seguimos con la *siguiente pregunta*?';
+      }
+    }
+    return cleaned;
   }
 
   private async buildModuleCompletedMessage(
@@ -576,7 +768,7 @@ export class AgentsService {
   private wantsPostAnswerExplain(message: string): boolean {
     const t = message.trim().toLowerCase().normalize('NFD').replace(/\p{M}/gu, '');
     if (/^(explicar|explica|explicame|explicación|explicacion)$/.test(t)) return true;
-    return /\b(explicar|explicame|explicacion|explicación|mas a fondo|más a fondo|cuentame mas|cuéntame más|profundizar|no entendi|no entendí|no comprendi|no comprendí|aclarar|duda|por que|porqué|porque)\b/.test(
+    return /\b(explicar|explicame|explicacion|explicación|mas a fondo|más a fondo|cuentame mas|cuéntame más|profundizar|profundiza|no entendi|no entendí|no comprendi|no comprendí|aclarar|duda|por que|porqué|porque)\b/.test(
       t,
     );
   }
@@ -664,9 +856,9 @@ export class AgentsService {
       .filter((line) => line && !/^[A-D][).:-]/i.test(line));
   }
 
-  /** Evita duplicar numeración cuando el ítem ya viene como "1. Texto…". */
+  /** Evita duplicar numeración cuando el ítem ya viene como "1. Texto…" o "1. 1. Texto…". */
   private formatNumberedListLine(item: string, index: number): string {
-    const stripped = item.trim().replace(/^\d+\.\s*/, '').trim();
+    const stripped = item.trim().replace(/^(\d+\.\s*)+/, '').trim();
     return `${index}. ${stripped}`;
   }
 
@@ -676,8 +868,8 @@ export class AgentsService {
   }
 
   private ensureLetterPrefix(line: string): string {
-    const t = line.trim();
-    return /^[A-D][).:-]/i.test(t) ? t : t;
+    const stripped = line.trim().replace(/^(\d+\.\s*)+/, '').trim();
+    return /^[A-Z][).:-]/i.test(stripped) ? stripped : stripped;
   }
 
   private replyTo(ctx: RuntimeContext): string {
@@ -691,6 +883,7 @@ export class AgentsService {
     courseId?: string,
     moduleId?: string,
     fallbackQuery?: string,
+    topK = 4,
   ): AgentTool {
     return {
       name,
@@ -703,9 +896,9 @@ export class AgentsService {
       execute: async (args) => {
         if (!courseId) return 'No hay curso activo.';
         const primary = args.query || fallbackQuery || ctx.message;
-        let context = await this.rag.retrieveContext(courseId, moduleId, primary, 4);
+        let context = await this.rag.retrieveContext(courseId, moduleId, primary, topK);
         if (!context?.trim() && fallbackQuery && primary !== fallbackQuery) {
-          context = await this.rag.retrieveContext(courseId, moduleId, fallbackQuery, 4);
+          context = await this.rag.retrieveContext(courseId, moduleId, fallbackQuery, topK);
         }
         return context || 'No se encontró material relevante en el módulo.';
       },
