@@ -87,20 +87,30 @@ export class EvolutionAdminService {
       createdApiKey = created?.hash?.apikey || created?.hash || created?.instance?.apikey;
       qrFromCreate = created?.qrcode?.base64;
     } catch (err: any) {
-      // Si ya existe, continuamos para obtener el QR via connect
+      // Si ya existe, recuperamos su apikey antes de connect/webhook
       this.logger.warn(`create instance "${instance}" (puede ya existir): ${err?.message || err}`);
+      const meta = await this.fetchInstanceMeta(instance, this.adminKey());
+      if (meta.apiKey) createdApiKey = meta.apiKey;
     }
+
+    const resolvedApiKey = createdApiKey || instructor.evolutionApiKey || this.adminKey();
 
     // Persistir instancia + apikey (si Evolution la devolvio) y estado connecting
     await this.usersService.updateEvolutionConfig(instructor.id, {
       evolutionInstance: instance,
-      evolutionApiKey: createdApiKey || instructor.evolutionApiKey,
+      evolutionApiKey: resolvedApiKey !== this.adminKey() ? resolvedApiKey : instructor.evolutionApiKey,
       evolutionStatus: 'connecting',
     });
 
+    if (!webhook) {
+      this.logger.error(
+        `AGENT_WEBHOOK_PUBLIC_URL no configurado: la instancia "${instance}" no recibira mensajes del agente`,
+      );
+    }
+
     // 2. Asegurar webhook (por si la instancia ya existia)
     if (webhook) {
-      await this.safeSetWebhook(instance, createdApiKey || instructor.evolutionApiKey || this.adminKey(), webhook);
+      await this.safeSetWebhook(instance, resolvedApiKey, webhook);
     }
 
     // 3. Obtener QR
@@ -108,11 +118,7 @@ export class EvolutionAdminService {
     let pairingCode: string | undefined;
     if (!qrBase64) {
       try {
-        const conn = await this.request(
-          'GET',
-          `/instance/connect/${instance}`,
-          createdApiKey || instructor.evolutionApiKey || this.adminKey(),
-        );
+        const conn = await this.request('GET', `/instance/connect/${instance}`, resolvedApiKey);
         qrBase64 = conn?.base64 || conn?.qrcode?.base64;
         pairingCode = conn?.pairingCode || conn?.code;
       } catch (err: any) {
@@ -147,8 +153,11 @@ export class EvolutionAdminService {
 
     let number = fresh.evolutionNumber;
     if (status === 'connected') {
-      const fetched = await this.fetchInstanceNumber(instance, apiKey);
-      if (fetched) number = fetched;
+      const meta = await this.fetchInstanceMeta(instance, apiKey);
+      if (meta.number) number = meta.number;
+      if (meta.apiKey && meta.apiKey !== fresh.evolutionApiKey) {
+        await this.usersService.updateEvolutionConfig(fresh.id, { evolutionApiKey: meta.apiKey });
+      }
       const webhook = this.webhookUrl();
       if (webhook) {
         await this.safeSetWebhook(instance, apiKey, webhook);
@@ -162,6 +171,10 @@ export class EvolutionAdminService {
 
     if (number) {
       await this.usersService.syncInstructorPhoneFromEvolution(fresh.id, number);
+    } else if (status === 'connected') {
+      this.logger.warn(
+        `Instancia "${instance}" conectada pero no se pudo obtener el numero; phoneNumber del instructor no actualizado`,
+      );
     } else if (status === 'disconnected') {
       await this.usersService.syncInstructorPhoneFromEvolution(fresh.id, null);
     }
@@ -180,26 +193,84 @@ export class EvolutionAdminService {
     return 'disconnected';
   }
 
-  /** Obtiene el numero de WhatsApp vinculado a la instancia desde Evolution. */
-  private async fetchInstanceNumber(instance: string, apiKey: string): Promise<string | undefined> {
+  /** Metadatos de la instancia en Evolution (numero vinculado y apikey propia). */
+  private async fetchInstanceMeta(
+    instance: string,
+    apiKey: string,
+  ): Promise<{ number?: string; apiKey?: string }> {
     try {
       const res = await this.request(
         'GET',
         `/instance/fetchInstances?instanceName=${encodeURIComponent(instance)}`,
         apiKey,
       );
-      const list: any[] = Array.isArray(res) ? res : res?.instances ? res.instances : res ? [res] : [];
+      const list = this.normalizeInstanceList(res);
       const match =
-        list.find((item) => (item?.instance?.instanceName || item?.instanceName) === instance) ||
-        list[0];
-      const owner: string | undefined =
-        match?.owner || match?.instance?.owner || match?.instance?.wuid;
-      if (!owner || typeof owner !== 'string') return undefined;
-      return owner.split('@')[0] || undefined;
+        list.find((item) => this.instanceNameFromItem(item) === instance) ||
+        (list.length === 1 ? list[0] : undefined);
+      if (!match) {
+        this.logger.warn(
+          `fetchInstances/${instance}: instancia no encontrada (${list.length} resultado(s))`,
+        );
+        return {};
+      }
+
+      const number = this.extractPhoneFromItem(match);
+      const instanceApiKey = this.extractApiKeyFromItem(match);
+
+      if (!number) {
+        this.logger.warn(
+          `fetchInstances/${instance}: conectada pero Evolution no devolvio numero (ownerJid/owner/number)`,
+        );
+      }
+
+      return { number, apiKey: instanceApiKey };
     } catch (err: any) {
       this.logger.warn(`fetchInstances/${instance}: ${err?.message || err}`);
-      return undefined;
+      return {};
     }
+  }
+
+  private normalizeInstanceList(res: any): any[] {
+    if (Array.isArray(res)) return res;
+    if (Array.isArray(res?.instances)) return res.instances;
+    if (res?.instance) return [res.instance];
+    return res ? [res] : [];
+  }
+
+  private instanceNameFromItem(item: any): string | undefined {
+    return item?.instance?.instanceName || item?.instanceName || item?.name || item?.instance?.name;
+  }
+
+  private extractPhoneFromItem(item: any): string | undefined {
+    const direct = item?.number || item?.instance?.number;
+    if (typeof direct === 'string' && direct.trim()) {
+      const digits = direct.replace(/\D/g, '');
+      return digits || direct.trim();
+    }
+
+    const jid =
+      item?.ownerJid ||
+      item?.owner ||
+      item?.instance?.ownerJid ||
+      item?.instance?.owner ||
+      item?.instance?.wuid;
+    if (typeof jid === 'string' && jid.trim()) {
+      const local = jid.split('@')[0]?.replace(/\D/g, '');
+      return local || undefined;
+    }
+
+    return undefined;
+  }
+
+  private extractApiKeyFromItem(item: any): string | undefined {
+    return (
+      item?.token ||
+      item?.apikey ||
+      item?.hash?.apikey ||
+      item?.instance?.apikey ||
+      item?.instance?.token
+    );
   }
 
   /** Desvincula el numero (logout de la instancia). */
@@ -230,8 +301,9 @@ export class EvolutionAdminService {
           events: ['MESSAGES_UPSERT'],
         },
       });
+      this.logger.log(`Webhook configurado para "${instance}" -> ${url}`);
     } catch (err: any) {
-      this.logger.warn(`set webhook ${instance}: ${err?.message || err}`);
+      this.logger.error(`No se pudo configurar webhook para "${instance}": ${err?.message || err}`);
     }
   }
 
