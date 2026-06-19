@@ -133,7 +133,7 @@ export class EvolutionAdminService {
   async status(instructor: User): Promise<ConnectionStatus> {
     const fresh = await this.usersService.findById(instructor.id);
     const instance = this.instanceNameFor(fresh);
-    const apiKey = fresh.evolutionApiKey || this.adminKey();
+    const apiKey = this.adminKey();
 
     if (!fresh.evolutionInstance && !fresh.evolutionApiKey) {
       return { instance, state: 'close', status: 'disconnected' };
@@ -276,7 +276,7 @@ export class EvolutionAdminService {
   /** Desvincula el numero (logout de la instancia). */
   async logout(instructor: User): Promise<{ instance: string; success: boolean }> {
     const instance = this.instanceNameFor(instructor);
-    const apiKey = instructor.evolutionApiKey || this.adminKey();
+    const apiKey = this.adminKey();
     try {
       await this.request('DELETE', `/instance/logout/${instance}`, apiKey);
     } catch (err: any) {

@@ -138,9 +138,14 @@ export class EvolutionService {
     const json: any = await res.json().catch(() => ({}));
     if (!res.ok) {
       this.logger.error(
-        `Evolution ${path} fallo status=${res.status} msg=${json?.message || JSON.stringify(json).slice(0, 200)}`,
+        `Evolution ${path} fallo status=${res.status} instance=${cfg.instance} msg=${json?.message || JSON.stringify(json).slice(0, 200)}`,
       );
       throw new Error(`Evolution API error ${res.status}`);
+    }
+    if (json?.error || json?.status === 'error') {
+      const msg = json?.message || JSON.stringify(json).slice(0, 200);
+      this.logger.error(`Evolution ${path} respondio error instance=${cfg.instance}: ${msg}`);
+      throw new Error(`Evolution API error: ${msg}`);
     }
     return json;
   }

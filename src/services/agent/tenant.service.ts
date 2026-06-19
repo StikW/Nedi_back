@@ -46,7 +46,8 @@ export class TenantService {
       evolution: {
         serverUrl,
         instance,
-        apiKey: instructor.evolutionApiKey || apikey || adminKey,
+        // La admin key funciona para todas las instancias del servidor Evolution
+        apiKey: adminKey || instructor.evolutionApiKey || apikey || '',
       },
     };
   }

@@ -3,8 +3,6 @@ import { AuthController } from '../controllers/auth.controller';
 import { UsersController } from '../controllers/users.controller';
 import { AuthService } from '../services/auth.service';
 import { UsersService } from '../services/users.service';
-import { N8nCredentialService } from '../services/n8n-credential.service';
-import { WorkflowService } from '../services/workflow.service';
 import { AuthModule } from './auth.module';
 
 /**
@@ -13,7 +11,7 @@ import { AuthModule } from './auth.module';
 @Module({
   imports: [forwardRef(() => AuthModule)],
   controllers: [AuthController, UsersController],
-  providers: [AuthService, UsersService, N8nCredentialService, WorkflowService],
+  providers: [AuthService, UsersService],
   exports: [UsersService],
 })
-export class UsersModule {} 
+export class UsersModule {}

@@ -187,8 +187,13 @@ export class AgentOrchestratorService {
         presenceDelayMs,
         { linkPreview: false },
       );
+      this.logger.log(
+        `[${tenant.evolution.instance}] Respuesta enviada a ${phoneNumber} (${reply.length} chars)`,
+      );
     } catch (err: any) {
-      this.logger.error(`No se pudo enviar respuesta a ${phoneNumber}: ${err?.message || err}`);
+      this.logger.error(
+        `[${tenant.evolution.instance}] No se pudo enviar respuesta a ${phoneNumber}: ${err?.message || err}`,
+      );
     }
   }
 

@@ -8,11 +8,8 @@ import { CoursesModule } from './modules/courses.module';
 import { CourseModulesModule } from './modules/course-modules.module';
 import { AuthModule } from './modules/auth.module';
 import { UploadsModule } from './modules/uploads.module';
-import { WorkflowsModule } from './modules/workflows.module';
 import { StudentsModule } from './modules/students.module';
 import { ModuleProgressModule } from './modules/module-progress.module';
-import { N8nCredentialsModule } from './modules/n8n-credentials.module';
-import { TemplateModule } from './modules/template.module';
 import { PublicConfigModule } from './modules/public-config.module';
 import { RemindersModule } from './modules/reminders.module';
 import { AgentModule } from './modules/agent.module';
@@ -28,7 +25,6 @@ import envConfig from './core/config/env.config';
     }),
     ScheduleModule.forRoot(),
     DatabaseModule,
-    TemplateModule,
     HealthModule,
     UsersModule,
     CoursesModule,
@@ -36,12 +32,10 @@ import envConfig from './core/config/env.config';
     AuthModule,
     UploadsModule,
     PublicConfigModule,
-    WorkflowsModule,
     StudentsModule,
     ModuleProgressModule,
-    N8nCredentialsModule,
     RemindersModule,
     AgentModule,
   ],
 })
-export class AppModule {} 
+export class AppModule {}

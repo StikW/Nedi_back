@@ -13,10 +13,6 @@ export default registerAs('env', () => ({
   // JWT Configuration
   jwtSecret: process.env.JWT_SECRET,
   jwtExpiresIn: process.env.JWT_EXPIRES_IN,
-  
-  // N8N Configuration
-  n8nBaseUrl: process.env.N8N_BASE_URL,
-  n8nApiKey: process.env.N8N_API_KEY,
 
   // WhatsApp Cloud API (Meta) - credenciales globales
   whatsappApiVersion: process.env.WHATSAPP_API_VERSION,

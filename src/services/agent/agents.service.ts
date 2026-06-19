@@ -148,6 +148,12 @@ export class AgentsService {
       },
     );
 
+    if (this.isCourseListIntent(ctx.message)) {
+      return courses.length === 0
+        ? NO_ACTIVE_COURSES_MESSAGE
+        : this.formatCourseList(courses);
+    }
+
     if (courses.length === 0) {
       return NO_ACTIVE_COURSES_MESSAGE;
     }
@@ -962,5 +968,24 @@ export class AgentsService {
       this.logger.error(`Error obteniendo cursos del estudiante: ${err?.message || err}`);
       return [];
     }
+  }
+
+  private isCourseListIntent(message: string): boolean {
+    const normalized = message
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim();
+    return (
+      normalized.includes('ver cursos') ||
+      normalized.includes('mis cursos') ||
+      /\b(ver|mostrar|listar|revisar)\b.*\bcursos?\b/.test(normalized) ||
+      /\bcursos?\b.*\b(disponibles|activos|tengo|hay)\b/.test(normalized)
+    );
+  }
+
+  private formatCourseList(courses: { id: string; title: string }[]): string {
+    const lines = courses.map((c) => `- ${c.title}`).join('\n');
+    return `Estos son tus cursos disponibles:\n${lines}\n\n¿Cuál te gustaría elegir?`;
   }
 }
