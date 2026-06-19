@@ -10,7 +10,7 @@ export interface EvolutionConfig {
   instance: string;
   /** API key principal de la instancia */
   apiKey: string;
-  /** Claves alternativas (webhook, guardada, admin) para reintentos de envio */
+  /** Claves alternativas (webhook, live, guardada) para reintentos de envio */
   apiKeys?: string[];
 }
 

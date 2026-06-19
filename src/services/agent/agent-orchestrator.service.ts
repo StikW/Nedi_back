@@ -196,7 +196,7 @@ export class AgentOrchestratorService {
     recipientJid: string,
     presenceDelayMs: number,
   ): Promise<void> {
-    const to = phoneNumber || recipientJid;
+    const to = recipientJid || phoneNumber;
     const instructorLine =
       tenant.liveOwnerNumber ||
       tenant.instructor.evolutionNumber ||

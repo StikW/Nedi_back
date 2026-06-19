@@ -36,17 +36,25 @@ export class TenantService {
     const adminKey = (this.configService.get<string>('EVOLUTION_ADMIN_API_KEY') || '').trim();
     const webhookKey = (apikey || '').trim();
     let storedKey = (instructor.evolutionApiKey || '').trim();
+    if (storedKey && adminKey && storedKey === adminKey) {
+      storedKey = '';
+    }
 
     // Token en vivo desde Evolution (evita quedar con admin key guardada por error)
     let liveOwnerNumber: string | undefined;
+    let liveKey = '';
     try {
       const live = await this.evolutionAdmin.fetchRuntimeMeta(instance);
       liveOwnerNumber = live.ownerNumber;
-      const liveKey = (live.apiKey || '').trim();
-      if (liveKey && liveKey !== adminKey && liveKey !== storedKey) {
-        storedKey = liveKey;
+      liveKey = (live.apiKey || '').trim();
+      if (liveKey && adminKey && liveKey === adminKey) {
+        liveKey = '';
+      }
+      const keyToPersist = liveKey || (webhookKey && webhookKey !== adminKey ? webhookKey : '');
+      if (keyToPersist && keyToPersist !== (instructor.evolutionApiKey || '').trim()) {
+        storedKey = keyToPersist;
         this.usersService
-          .updateEvolutionConfig(instructor.id, { evolutionApiKey: liveKey })
+          .updateEvolutionConfig(instructor.id, { evolutionApiKey: keyToPersist })
           .catch((err) =>
             this.logger.warn(
               `No se pudo persistir evolutionApiKey (live) para ${instance}: ${err?.message || err}`,
@@ -57,25 +65,23 @@ export class TenantService {
       this.logger.warn(`fetchRuntimeMeta/${instance}: ${err?.message || err}`);
     }
 
-    // Orden n8n: live/guardada > webhook > admin (admin solo fallback)
-    const apiKeys = [...new Set([storedKey, webhookKey, adminKey].filter(Boolean))];
+    // n8n envia con la apikey del webhook; nunca la admin (puede devolver 200 sin entregar).
+    const apiKeys = [
+      ...new Set(
+        [webhookKey, liveKey, storedKey].filter(
+          (key) => key && (!adminKey || key !== adminKey),
+        ),
+      ),
+    ];
     if (apiKeys.length === 0) {
-      this.logger.error(`Sin apikey para enviar mensajes en instancia "${instance}"`);
+      this.logger.error(
+        `Sin apikey de instancia para enviar mensajes en "${instance}" (solo admin o vacia)`,
+      );
       return null;
     }
 
-    if (webhookKey && webhookKey !== adminKey && webhookKey !== storedKey) {
-      this.usersService
-        .updateEvolutionConfig(instructor.id, { evolutionApiKey: webhookKey })
-        .catch((err) =>
-          this.logger.warn(
-            `No se pudo persistir evolutionApiKey para ${instance}: ${err?.message || err}`,
-          ),
-        );
-    }
-
     this.logger.debug(
-      `[${instance}] apikeys=${apiKeys.length} liveOwner=${liveOwnerNumber || '?'} (stored=${!!storedKey}, webhook=${!!webhookKey}, admin=${!!adminKey})`,
+      `[${instance}] apikeys=${apiKeys.length} liveOwner=${liveOwnerNumber || '?'} (webhook=${!!webhookKey}, live=${!!liveKey}, stored=${!!storedKey})`,
     );
 
     return {

@@ -27,13 +27,10 @@ export class EvolutionService {
     return { ...cfg, apiKey };
   }
 
-  /** Claves de la instancia (webhook/guardada). Admin solo como ultimo recurso. */
+  /** Claves propias de la instancia (webhook / live / guardada). Sin admin global. */
   private instanceKeys(cfg: EvolutionConfig): string[] {
     const keys = cfg.apiKeys?.length ? cfg.apiKeys : [cfg.apiKey];
-    if (keys.length <= 1) return keys.filter(Boolean);
-    const last = keys[keys.length - 1];
-    const instanceOnly = keys.slice(0, -1).filter(Boolean);
-    return instanceOnly.length > 0 ? instanceOnly : keys.filter(Boolean);
+    return [...new Set(keys.filter(Boolean))];
   }
 
   private allKeys(cfg: EvolutionConfig): string[] {
@@ -51,9 +48,23 @@ export class EvolutionService {
     return digits;
   }
 
-  /** n8n enviaba el JID completo; v2 acepta digitos. Probamos ambos. */
+  /** n8n enviaba el JID completo; v2 acepta digitos. Probamos el JID recibido primero. */
   private outboundNumberVariants(to: string): string[] {
-    const digits = this.normalizeOutboundNumber(to);
+    const trimmed = (to || '').trim();
+    if (!trimmed) {
+      throw new Error('Numero de destino invalido: vacio');
+    }
+
+    if (trimmed.includes('@')) {
+      const variants = [trimmed];
+      const digits = trimmed.split('@')[0]?.replace(/[^0-9]/g, '') || '';
+      if (digits.length >= 10) {
+        variants.push(digits, `${digits}@s.whatsapp.net`);
+      }
+      return [...new Set(variants)];
+    }
+
+    const digits = this.normalizeOutboundNumber(trimmed);
     return [...new Set([digits, `${digits}@s.whatsapp.net`])];
   }
 
@@ -79,7 +90,7 @@ export class EvolutionService {
       };
 
       try {
-        const json = await this.postWithKeyFallback(
+        const { json, keySuffix } = await this.postWithKeyFallback(
           cfg,
           `/message/sendText/${cfg.instance}`,
           body,
@@ -88,9 +99,13 @@ export class EvolutionService {
         );
         const messageId = json?.key?.id || json?.message?.key?.id;
         this.logger.log(
-          `sendText OK instance=${cfg.instance} to=${number} msgId=${messageId || '?'}`,
+          `sendText OK instance=${cfg.instance} to=${number} msgId=${messageId || '?'} key=...${keySuffix}`,
         );
-        return { messageId, numberUsed: number, keyUsed: 'instance' };
+        return {
+          messageId,
+          numberUsed: number,
+          keyUsed: keySuffix,
+        };
       } catch (err: any) {
         lastError = err instanceof Error ? err : new Error(String(err));
         this.logger.warn(
@@ -167,7 +182,7 @@ export class EvolutionService {
 
   async getBase64FromMediaMessage(cfg: EvolutionConfig, rawMessage: any): Promise<string | null> {
     try {
-      const res = await this.postWithKeyFallback(
+      const { json: res } = await this.postWithKeyFallback(
         cfg,
         `/chat/getBase64FromMediaMessage/${cfg.instance}`,
         { message: rawMessage, convertToMp4: false },
@@ -207,37 +222,31 @@ export class EvolutionService {
     path: string,
     body: any,
     label: string,
-    instanceKeysOnlyFirst: boolean,
-  ): Promise<any> {
-    const keySets = instanceKeysOnlyFirst
-      ? [this.instanceKeys(cfg), this.allKeys(cfg)]
-      : [this.allKeys(cfg)];
-
+    instanceKeysOnly: boolean,
+  ): Promise<{ json: any; keySuffix: string }> {
+    const keys = instanceKeysOnly ? this.instanceKeys(cfg) : this.allKeys(cfg);
     let lastError: Error | undefined;
 
-    for (const keys of keySets) {
-      for (let i = 0; i < keys.length; i++) {
-        const key = keys[i];
-        try {
-          const json = await this.post(this.withKey(cfg, key), path, body);
-          if (path.includes('/message/send') && !this.isMessageDelivered(json)) {
-            throw new Error(
-              `Evolution no confirmo entrega (${label}): ${JSON.stringify(json).slice(0, 200)}`,
-            );
-          }
-          if (i > 0 || keys !== keySets[0]) {
-            const isAdminFallback = key === cfg.apiKeys?.[cfg.apiKeys.length - 1];
-            this.logger.log(
-              `${label} OK en ${cfg.instance} con apikey alternativa (set ${keySets.indexOf(keys) + 1}, intento ${i + 1}${isAdminFallback ? ', admin fallback' : ''})`,
-            );
-          }
-          return json;
-        } catch (err: any) {
-          lastError = err instanceof Error ? err : new Error(String(err));
-          this.logger.warn(
-            `${label} key ...${key.slice(-4)} fallo en ${cfg.instance}: ${lastError.message}`,
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i];
+      try {
+        const json = await this.post(this.withKey(cfg, key), path, body);
+        if (path.includes('/message/send') && !this.isMessageDelivered(json)) {
+          throw new Error(
+            `Evolution no confirmo entrega (${label}): ${JSON.stringify(json).slice(0, 200)}`,
           );
         }
+        if (i > 0) {
+          this.logger.log(
+            `${label} OK en ${cfg.instance} con apikey alternativa (intento ${i + 1})`,
+          );
+        }
+        return { json, keySuffix: key.slice(-4) };
+      } catch (err: any) {
+        lastError = err instanceof Error ? err : new Error(String(err));
+        this.logger.warn(
+          `${label} key ...${key.slice(-4)} fallo en ${cfg.instance}: ${lastError.message}`,
+        );
       }
     }
 
