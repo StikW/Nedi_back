@@ -179,20 +179,21 @@ export class AgentOrchestratorService {
     recipientJid: string,
     presenceDelayMs: number,
   ): Promise<void> {
+    const to = phoneNumber || recipientJid;
     try {
       await this.evolution.sendText(
         tenant.evolution,
-        recipientJid || phoneNumber,
+        to,
         reply,
         presenceDelayMs,
         { linkPreview: false },
       );
       this.logger.log(
-        `[${tenant.evolution.instance}] Respuesta enviada a ${phoneNumber} (${reply.length} chars)`,
+        `[${tenant.evolution.instance}] Respuesta enviada a ${to} (${reply.length} chars)`,
       );
     } catch (err: any) {
       this.logger.error(
-        `[${tenant.evolution.instance}] No se pudo enviar respuesta a ${phoneNumber}: ${err?.message || err}`,
+        `[${tenant.evolution.instance}] No se pudo enviar respuesta a ${to}: ${err?.message || err}`,
       );
     }
   }
@@ -232,10 +233,27 @@ export class AgentOrchestratorService {
     if (remoteJid.endsWith('@g.us')) return null;
 
     const remoteJidAlt: string = key.remoteJidAlt || '';
-    const usePrimaryJid = remoteJid.includes('s.whatsapp.net');
-    const recipientJid = usePrimaryJid ? remoteJid : remoteJidAlt || remoteJid;
-    const phoneNumber = recipientJid.split('@')[0];
-    if (!phoneNumber) return null;
+    const senderPn: string = key.senderPn || data?.senderPn || '';
+
+    let recipientJid: string;
+    if (remoteJid.includes('@s.whatsapp.net')) {
+      recipientJid = remoteJid;
+    } else if (remoteJidAlt.includes('@s.whatsapp.net')) {
+      recipientJid = remoteJidAlt;
+    } else if (senderPn) {
+      const digits = senderPn.replace(/[^0-9]/g, '');
+      recipientJid = digits ? `${digits}@s.whatsapp.net` : remoteJidAlt || remoteJid;
+    } else {
+      recipientJid = remoteJidAlt || remoteJid;
+    }
+
+    const phoneNumber = recipientJid.split('@')[0].replace(/[^0-9]/g, '');
+    if (!phoneNumber || phoneNumber.length < 10) {
+      this.logger.warn(
+        `JID no resuelto a telefono valido remoteJid=${remoteJid} alt=${remoteJidAlt} senderPn=${senderPn}`,
+      );
+      return null;
+    }
 
     const instance = root?.instance || payload?.instance || data?.instance || '';
     const apikey = root?.apikey || payload?.apikey || data?.apikey || '';

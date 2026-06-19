@@ -897,7 +897,7 @@ export class AgentsService {
   }
 
   private replyTo(ctx: RuntimeContext): string {
-    return ctx.recipientJid || ctx.phoneNumber;
+    return ctx.phoneNumber || ctx.recipientJid || '';
   }
 
   private ragTool(
