@@ -1,11 +1,14 @@
-import { Injectable, Inject, ConflictException, NotFoundException } from '@nestjs/common';
-import { DynamoDBDocumentClient, PutCommand, GetCommand, QueryCommand, UpdateCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
+import { Injectable, Inject, ConflictException, NotFoundException, BadRequestException, forwardRef } from '@nestjs/common';
+import { DynamoDBDocumentClient, PutCommand, GetCommand, QueryCommand, UpdateCommand, ScanCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
 import { v4 as uuidv4 } from 'uuid';
 import * as bcrypt from 'bcrypt';
 import { User, USERS_TABLE, UserRole } from '../models/user.entity';
 import { RegisterDto } from '../models/auth.dto';
-import { UpdateUserDto, UserResponseDto } from '../models/user.dto';
+import { UpdateUserDto, UserResponseDto, DeleteUserResultDto } from '../models/user.dto';
 import { PaginationDto, PaginatedResponseDto } from '../models/pagination.dto';
+import { CourseService } from './course.service';
+import { EvolutionAdminService } from './agent/evolution-admin.service';
+import { StudentProgressCleanupService } from './student-progress-cleanup.service';
 
 /**
  * Service responsible for user operations
@@ -15,6 +18,11 @@ export class UsersService {
   constructor(
     @Inject('DYNAMODB_CLIENT')
     private readonly dynamoClient: DynamoDBDocumentClient,
+    @Inject(forwardRef(() => CourseService))
+    private readonly courseService: CourseService,
+    @Inject(forwardRef(() => EvolutionAdminService))
+    private readonly evolutionAdmin: EvolutionAdminService,
+    private readonly progressCleanup: StudentProgressCleanupService,
   ) {}
 
   /**
@@ -578,6 +586,54 @@ export class UsersService {
         nextCursor,
         sortOrder
       }
+    };
+  }
+
+  /**
+   * Elimina un usuario y, si es instructor, sus cursos, estados del agente e instancia Evolution.
+   */
+  public async deleteUser(userId: string, actingAdminId?: string): Promise<DeleteUserResultDto> {
+    if (actingAdminId && actingAdminId === userId) {
+      throw new BadRequestException('No puedes eliminar tu propia cuenta');
+    }
+
+    const user = await this.findById(userId);
+    let deletedCoursesCount = 0;
+    let deletedAgentStatesCount = 0;
+    let evolutionInstanceDeleted = false;
+    const evolutionInstance =
+      user.evolutionInstance ||
+      (user.role === UserRole.INSTRUCTOR ? `nedi_${user.id}` : undefined);
+
+    if (user.role === UserRole.INSTRUCTOR) {
+      const courses = await this.courseService.findAllByInstructor(userId);
+      for (const course of courses) {
+        await this.courseService.delete(course.id, userId);
+        deletedCoursesCount++;
+      }
+
+      if (evolutionInstance) {
+        deletedAgentStatesCount = await this.progressCleanup.purgeByEvolutionInstance(
+          evolutionInstance,
+        );
+        evolutionInstanceDeleted = await this.evolutionAdmin.deleteInstance(evolutionInstance);
+      }
+    }
+
+    await this.dynamoClient.send(
+      new DeleteCommand({
+        TableName: USERS_TABLE,
+        Key: { id: userId },
+      }),
+    );
+
+    return {
+      userId,
+      role: user.role,
+      deletedCoursesCount,
+      deletedAgentStatesCount,
+      evolutionInstance,
+      evolutionInstanceDeleted,
     };
   }
 } 

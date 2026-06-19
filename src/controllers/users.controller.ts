@@ -1,9 +1,15 @@
-import { Controller, Get, Put, Param, Body, UseGuards, Query, ParseIntPipe } from '@nestjs/common';
+import { Controller, Get, Put, Delete, Param, Body, UseGuards, Query, Request } from '@nestjs/common';
+import { Request as ExpressRequest } from 'express';
 import { UsersService } from '../services/users.service';
-import { UpdateUserDto, UserResponseDto } from '../models/user.dto';
+import { UpdateUserDto, UserResponseDto, DeleteUserResultDto } from '../models/user.dto';
 import { JwtAuthGuard } from '../strategies/jwt-auth.guard';
 import { AdminGuard } from '../strategies/admin.guard';
 import { PaginationDto, PaginatedResponseDto } from '../models/pagination.dto';
+import { User } from '../models/user.entity';
+
+interface RequestWithUser extends ExpressRequest {
+  user: User;
+}
 
 /**
  * Controller responsible for user management endpoints (Admin only)
@@ -76,5 +82,17 @@ export class UsersController {
     @Body() updateDto: UpdateUserDto,
   ): Promise<UserResponseDto> {
     return this.usersService.updateUser(id, updateDto);
+  }
+
+  /**
+   * Elimina un usuario (Admin only).
+   * Si es instructor: borra cursos, Pinecone/S3 asociados, estados del agente e instancia Evolution.
+   */
+  @Delete(':id')
+  public async deleteUser(
+    @Param('id') id: string,
+    @Request() req: RequestWithUser,
+  ): Promise<DeleteUserResultDto> {
+    return this.usersService.deleteUser(id, req.user.id);
   }
 }

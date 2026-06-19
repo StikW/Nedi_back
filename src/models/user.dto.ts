@@ -98,3 +98,13 @@ export class UserResponseDto {
   /** Estado de la conexion Evolution: disconnected | connecting | connected */
   public evolutionStatus?: 'disconnected' | 'connecting' | 'connected';
 }
+
+/** Resultado de eliminar un usuario desde el panel de admin. */
+export class DeleteUserResultDto {
+  public userId!: string;
+  public role!: UserRole;
+  public deletedCoursesCount!: number;
+  public deletedAgentStatesCount!: number;
+  public evolutionInstance?: string;
+  public evolutionInstanceDeleted!: boolean;
+}

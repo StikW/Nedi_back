@@ -301,6 +301,43 @@ export class StudentProgressCleanupService {
     return deleted;
   }
 
+  /** Elimina estados conversacionales del agente vinculados a una instancia Evolution. */
+  async purgeByEvolutionInstance(instance: string): Promise<number> {
+    if (!instance?.trim()) return 0;
+    const prefix = `${instance.trim()}#`;
+    let deleted = 0;
+    let exclusiveStartKey: Record<string, unknown> | undefined;
+
+    do {
+      const result = await this.dynamoClient.send(
+        new ScanCommand({
+          TableName: AGENT_STATE_TABLE,
+          FilterExpression: 'begins_with(#id, :prefix)',
+          ExpressionAttributeNames: { '#id': 'id' },
+          ExpressionAttributeValues: { ':prefix': prefix },
+          ExclusiveStartKey: exclusiveStartKey,
+        }),
+      );
+
+      for (const item of result.Items || []) {
+        await this.dynamoClient.send(
+          new DeleteCommand({
+            TableName: AGENT_STATE_TABLE,
+            Key: { id: (item as AgentState).id },
+          }),
+        );
+        deleted++;
+      }
+
+      exclusiveStartKey = result.LastEvaluatedKey;
+    } while (exclusiveStartKey);
+
+    if (deleted > 0) {
+      this.logger.log(`AgentState purgado para instancia ${instance}: ${deleted} registro(s)`);
+    }
+    return deleted;
+  }
+
   private async batchDeleteByKeys(
     tableName: string,
     keys: Array<Record<string, string>>,

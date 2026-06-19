@@ -1,4 +1,4 @@
-import { Injectable, Logger, HttpException, HttpStatus } from '@nestjs/common';
+import { Injectable, Logger, HttpException, HttpStatus, Inject, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { UsersService } from '../users.service';
 import { User } from '../../models/user.entity';
@@ -30,6 +30,7 @@ export class EvolutionAdminService {
 
   constructor(
     private readonly configService: ConfigService,
+    @Inject(forwardRef(() => UsersService))
     private readonly usersService: UsersService,
   ) {}
 
@@ -288,6 +289,33 @@ export class EvolutionAdminService {
     });
     await this.usersService.syncInstructorPhoneFromEvolution(instructor.id, null);
     return { instance, success: true };
+  }
+
+  /**
+   * Elimina permanentemente la instancia en Evolution (logout + borrado de datos).
+   * Idempotente: si la instancia no existe (404), se considera eliminada.
+   */
+  async deleteInstance(instanceName: string): Promise<boolean> {
+    if (!instanceName?.trim()) return false;
+    const instance = instanceName.trim();
+    try {
+      await this.request('DELETE', `/instance/delete/${encodeURIComponent(instance)}`, this.adminKey());
+      this.logger.log(`Instancia Evolution eliminada: ${instance}`);
+      return true;
+    } catch (err: any) {
+      if (this.isEvolutionNotFound(err)) {
+        this.logger.debug(`Instancia Evolution ${instance} ya no existía (404)`);
+        return true;
+      }
+      this.logger.warn(`No se pudo eliminar instancia Evolution ${instance}: ${err?.message || err}`);
+      return false;
+    }
+  }
+
+  private isEvolutionNotFound(err: unknown): boolean {
+    const e = err as { message?: string };
+    const msg = String(e?.message || err || '').toLowerCase();
+    return msg.includes('404') || msg.includes('not found') || msg.includes('does not exist');
   }
 
   private async safeSetWebhook(instance: string, apiKey: string, url: string): Promise<void> {

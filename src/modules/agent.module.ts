@@ -8,6 +8,7 @@ import { CourseModulesModule } from './course-modules.module';
 import { ModuleProgressModule } from './module-progress.module';
 import { UploadsModule } from './uploads.module';
 import { RagModule } from './rag.module';
+import { EvolutionAdminModule } from './evolution-admin.module';
 
 import { AgentWebhookController } from '../controllers/agent-webhook.controller';
 import { AgentEvolutionController } from '../controllers/agent-evolution.controller';
@@ -41,12 +42,12 @@ import { AgentOrchestratorService } from '../services/agent/agent-orchestrator.s
     ModuleProgressModule,
     UploadsModule,
     RagModule,
+    EvolutionAdminModule,
   ],
   controllers: [AgentWebhookController, AgentEvolutionController, VectorizationController],
   providers: [
     TenantService,
     EvolutionService,
-    EvolutionAdminService,
     MediaService,
     VectorizationService,
     AgentStateService,
