@@ -122,10 +122,25 @@ export class RagService {
       this.logger.warn('Pinecone no configurado: no se eliminan vectores del curso');
       return;
     }
+
+    const count = await this.countCourseVectors(courseId);
+    if (count === 0) {
+      this.logger.debug(
+        `Namespace Pinecone ${courseId} vacío o inexistente; no hay vectores que eliminar`,
+      );
+      return;
+    }
+
     try {
       await this.pinecone.index(this.indexName).namespace(courseId).deleteAll();
-      this.logger.log(`Namespace Pinecone eliminado: ${courseId}`);
+      this.logger.log(`Namespace Pinecone eliminado: ${courseId} (${count} registro(s))`);
     } catch (err: any) {
+      if (this.isPineconeNotFound(err)) {
+        this.logger.debug(
+          `Namespace Pinecone ${courseId} ya no existía al borrar (404); se considera limpio`,
+        );
+        return;
+      }
       this.logger.error(`Error eliminando namespace Pinecone ${courseId}: ${err?.message || err}`);
       throw err;
     }
@@ -144,6 +159,12 @@ export class RagService {
         .deleteMany({ filter: { module: { $eq: moduleId } } });
       this.logger.log(`Vectores Pinecone eliminados: curso ${courseId}, módulo ${moduleId}`);
     } catch (err: any) {
+      if (this.isPineconeNotFound(err)) {
+        this.logger.debug(
+          `Sin vectores Pinecone para curso ${courseId}, módulo ${moduleId} (404); nada que eliminar`,
+        );
+        return;
+      }
       this.logger.error(
         `Error eliminando vectores del módulo ${moduleId}: ${err?.message || err}`,
       );
@@ -164,5 +185,13 @@ export class RagService {
       this.logger.error(`Error contando vectores de ${courseId}: ${err?.message || err}`);
       return 0;
     }
+  }
+
+  /** Pinecone responde 404 cuando el namespace o los vectores nunca existieron. */
+  private isPineconeNotFound(err: unknown): boolean {
+    const e = err as { status?: number; message?: string };
+    if (e?.status === 404) return true;
+    const msg = String(e?.message || err || '').toLowerCase();
+    return msg.includes('404') || msg.includes('not found');
   }
 }
