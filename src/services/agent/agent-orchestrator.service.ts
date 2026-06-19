@@ -56,6 +56,8 @@ export class AgentOrchestratorService {
       return;
     }
 
+    this.warnIfInstructorSelfChat(tenant, parsed.phoneNumber);
+
     // Convertir media a texto (audio/imagen)
     const text = await this.toText(tenant, parsed);
     if (!text || !text.trim()) {
@@ -76,6 +78,17 @@ export class AgentOrchestratorService {
     this.buffer.push(key, text, debounceMs, async (concat) => {
       await this.process(tenant, parsed.phoneNumber, concat, recipientJid);
     });
+  }
+
+  private warnIfInstructorSelfChat(tenant: TenantContext, phoneNumber: string): void {
+    const instructorDigits = (tenant.instructor.evolutionNumber || tenant.instructor.phoneNumber || '')
+      .replace(/[^0-9]/g, '');
+    const senderDigits = phoneNumber.replace(/[^0-9]/g, '');
+    if (instructorDigits && senderDigits && instructorDigits === senderDigits) {
+      this.logger.warn(
+        `[${tenant.evolution.instance}] El remitente ${phoneNumber} es el mismo numero vinculado al instructor; WhatsApp puede mostrar "escribiendo" pero no entregar respuestas. Prueba desde otro telefono.`,
+      );
+    }
   }
 
   /** Nucleo: clasifica y ejecuta el agente correspondiente. */

@@ -12,15 +12,24 @@ import { EvolutionConfig } from './agent.types';
 export class EvolutionService {
   private readonly logger = new Logger(EvolutionService.name);
 
-  private headers(cfg: EvolutionConfig): Record<string, string> {
+  private headers(apiKey: string): Record<string, string> {
     return {
       'Content-Type': 'application/json',
-      apikey: cfg.apiKey,
+      apikey: apiKey,
     };
   }
 
   private base(cfg: EvolutionConfig): string {
     return (cfg.serverUrl || '').replace(/\/+$/, '');
+  }
+
+  private allKeys(cfg: EvolutionConfig): string[] {
+    const keys = cfg.apiKeys?.length ? cfg.apiKeys : [cfg.apiKey];
+    return [...new Set(keys.filter(Boolean))];
+  }
+
+  private withKey(cfg: EvolutionConfig, apiKey: string): EvolutionConfig {
+    return { ...cfg, apiKey };
   }
 
   /** Presencia justo antes de enviar: `composing` (texto) o `recording` (audio). */
@@ -30,14 +39,21 @@ export class EvolutionService {
     presence: 'composing' | 'recording',
     delayMs = 1200,
   ): Promise<void> {
-    try {
-      await this.post(cfg, `/chat/sendPresence/${cfg.instance}`, {
-        number: this.normalizeOutboundNumber(to),
-        presence,
-        delay: delayMs,
-      });
-    } catch (err: any) {
-      this.logger.debug(`sendPresence(${presence}) omitido: ${err?.message || err}`);
+    const number = this.normalizeOutboundNumber(to);
+    const keys = this.allKeys(cfg);
+    for (const key of keys) {
+      try {
+        await this.post(this.withKey(cfg, key), `/chat/sendPresence/${cfg.instance}`, {
+          number,
+          presence,
+          delay: delayMs,
+        });
+        return;
+      } catch (err: any) {
+        this.logger.debug(
+          `sendPresence(${presence}) con key ...${key.slice(-4)} omitido: ${err?.message || err}`,
+        );
+      }
     }
   }
 
@@ -51,12 +67,20 @@ export class EvolutionService {
   ): Promise<void> {
     const number = this.normalizeOutboundNumber(to);
     await this.sendPresence(cfg, number, 'composing', presenceDelayMs);
-    await this.post(cfg, `/message/sendText/${cfg.instance}`, {
+
+    const body = {
       number,
       text,
       delay: presenceDelayMs,
       ...(options.linkPreview === false ? { linkPreview: false } : {}),
-    });
+    };
+
+    await this.postWithKeyFallback(
+      cfg,
+      `/message/sendText/${cfg.instance}`,
+      body,
+      'sendText',
+    );
   }
 
   /** Envia una nota de voz (audio en base64). */
@@ -68,10 +92,12 @@ export class EvolutionService {
   ): Promise<void> {
     const number = this.normalizeOutboundNumber(to);
     await this.sendPresence(cfg, number, 'recording', presenceDelayMs);
-    await this.post(cfg, `/message/sendWhatsAppAudio/${cfg.instance}`, {
-      number,
-      audio: audioBase64,
-    });
+    await this.postWithKeyFallback(
+      cfg,
+      `/message/sendWhatsAppAudio/${cfg.instance}`,
+      { number, audio: audioBase64 },
+      'sendAudio',
+    );
   }
 
   /** Envia media (imagen/documento/video) por URL o base64. */
@@ -88,15 +114,20 @@ export class EvolutionService {
     } = {},
   ): Promise<void> {
     const number = this.normalizeOutboundNumber(to);
-    await this.post(cfg, `/message/sendMedia/${cfg.instance}`, {
-      number,
-      mediatype: options.mediatype || 'image',
-      media,
-      caption: options.caption,
-      fileName: options.fileName,
-      mimetype: options.mimetype,
-      delay: options.delay,
-    });
+    await this.postWithKeyFallback(
+      cfg,
+      `/message/sendMedia/${cfg.instance}`,
+      {
+        number,
+        mediatype: options.mediatype || 'image',
+        media,
+        caption: options.caption,
+        fileName: options.fileName,
+        mimetype: options.mimetype,
+        delay: options.delay,
+      },
+      'sendMedia',
+    );
   }
 
   /** Envia un video del modulo (equivalente al sub-workflow sendVideo). */
@@ -121,10 +152,12 @@ export class EvolutionService {
    */
   async getBase64FromMediaMessage(cfg: EvolutionConfig, rawMessage: any): Promise<string | null> {
     try {
-      const res = await this.post(cfg, `/chat/getBase64FromMediaMessage/${cfg.instance}`, {
-        message: rawMessage,
-        convertToMp4: false,
-      });
+      const res = await this.postWithKeyFallback(
+        cfg,
+        `/chat/getBase64FromMediaMessage/${cfg.instance}`,
+        { message: rawMessage, convertToMp4: false },
+        'getBase64FromMediaMessage',
+      );
       return res?.base64 || null;
     } catch (err: any) {
       this.logger.error(`Error descargando media de Evolution: ${err?.message || err}`);
@@ -142,11 +175,50 @@ export class EvolutionService {
     return digits;
   }
 
+  private isMessageDelivered(json: any): boolean {
+    return !!(json?.key?.id || json?.message?.key?.id);
+  }
+
+  private async postWithKeyFallback(
+    cfg: EvolutionConfig,
+    path: string,
+    body: any,
+    label: string,
+  ): Promise<any> {
+    const keys = this.allKeys(cfg);
+    let lastError: Error | undefined;
+
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i];
+      try {
+        const json = await this.post(this.withKey(cfg, key), path, body);
+        if (path.includes('/message/send') && !this.isMessageDelivered(json)) {
+          throw new Error(
+            `Evolution no confirmo entrega (${label}): ${JSON.stringify(json).slice(0, 200)}`,
+          );
+        }
+        if (i > 0) {
+          this.logger.log(
+            `${label} OK en instancia ${cfg.instance} con apikey alternativa (intento ${i + 1})`,
+          );
+        }
+        return json;
+      } catch (err: any) {
+        lastError = err instanceof Error ? err : new Error(String(err));
+        this.logger.warn(
+          `${label} intento ${i + 1}/${keys.length} fallo en ${cfg.instance}: ${lastError.message}`,
+        );
+      }
+    }
+
+    throw lastError || new Error(`${label} fallo sin apikeys validas`);
+  }
+
   private async post(cfg: EvolutionConfig, path: string, body: any): Promise<any> {
     const url = `${this.base(cfg)}${path}`;
     const res = await fetch(url, {
       method: 'POST',
-      headers: this.headers(cfg),
+      headers: this.headers(cfg.apiKey),
       body: JSON.stringify(body),
     });
     const json: any = await res.json().catch(() => ({}));
@@ -154,7 +226,7 @@ export class EvolutionService {
       this.logger.error(
         `Evolution ${path} fallo status=${res.status} instance=${cfg.instance} to=${body?.number || '?'} msg=${json?.message || JSON.stringify(json).slice(0, 200)}`,
       );
-      throw new Error(`Evolution API error ${res.status}`);
+      throw new Error(`Evolution API error ${res.status}: ${json?.message || ''}`);
     }
     if (json?.error || json?.status === 'error') {
       const msg = json?.message || JSON.stringify(json).slice(0, 200);
@@ -166,11 +238,6 @@ export class EvolutionService {
       const msg = JSON.stringify(nestedError).slice(0, 300);
       this.logger.error(`Evolution ${path} destino no valido instance=${cfg.instance} to=${body?.number || '?'}: ${msg}`);
       throw new Error(`Evolution API: destino no valido (${msg})`);
-    }
-    if (path.includes('/message/send') && !json?.key?.id) {
-      this.logger.warn(
-        `Evolution ${path} respondio 200 sin key.id instance=${cfg.instance} to=${body?.number || '?'} body=${JSON.stringify(json).slice(0, 200)}`,
-      );
     }
     return json;
   }

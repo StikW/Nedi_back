@@ -8,8 +8,10 @@ export interface EvolutionConfig {
   serverUrl: string;
   /** Nombre de la instancia del instructor */
   instance: string;
-  /** API key de la instancia */
+  /** API key principal de la instancia */
   apiKey: string;
+  /** Claves alternativas (webhook, guardada, admin) para reintentos de envio */
+  apiKeys?: string[];
 }
 
 /**

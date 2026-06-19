@@ -96,10 +96,14 @@ export class EvolutionAdminService {
 
     const resolvedApiKey = createdApiKey || instructor.evolutionApiKey || this.adminKey();
 
-    // Persistir instancia + apikey (si Evolution la devolvio) y estado connecting
+    // Persistir instancia + apikey propia de Evolution (necesaria para enviar mensajes)
     await this.usersService.updateEvolutionConfig(instructor.id, {
       evolutionInstance: instance,
-      evolutionApiKey: resolvedApiKey !== this.adminKey() ? resolvedApiKey : instructor.evolutionApiKey,
+      ...(resolvedApiKey && resolvedApiKey !== this.adminKey()
+        ? { evolutionApiKey: resolvedApiKey }
+        : createdApiKey
+          ? { evolutionApiKey: createdApiKey }
+          : {}),
       evolutionStatus: 'connecting',
     });
 
@@ -156,7 +160,7 @@ export class EvolutionAdminService {
     if (status === 'connected') {
       const meta = await this.fetchInstanceMeta(instance, apiKey);
       if (meta.number) number = meta.number;
-      if (meta.apiKey && meta.apiKey !== fresh.evolutionApiKey) {
+      if (meta.apiKey) {
         await this.usersService.updateEvolutionConfig(fresh.id, { evolutionApiKey: meta.apiKey });
       }
       const webhook = this.webhookUrl();
