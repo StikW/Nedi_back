@@ -116,8 +116,19 @@ export class LlmService {
       }
     }
 
-    // Si se agotaron las iteraciones, pedir una respuesta final sin tools
-    const final = await client.chat.completions.create({ model, messages });
+    // Respuesta final en lenguaje natural, sin más tool calls
+    const final = await client.chat.completions.create({
+      model,
+      messages: [
+        ...messages,
+        {
+          role: 'system',
+          content:
+            'Responde al estudiante en lenguaje natural, breve y cálido. No menciones herramientas, funciones, JSON, UUIDs, IDs técnicos, invocaciones ni procesos internos.',
+        },
+      ],
+      ...(toolDefs.length > 0 ? { tools: toolDefs, tool_choice: 'none' } : {}),
+    });
     return (final.choices?.[0]?.message?.content || '').trim();
   }
 }

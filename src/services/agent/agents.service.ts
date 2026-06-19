@@ -16,6 +16,7 @@ import {
   CLASSIFIER_PROMPT,
   CONVERSACION_INICIAL_PROMPT,
   CONVERSACION_PROMPT,
+  NO_ACTIVE_COURSES_MESSAGE,
   RESPUESTAS_PROMPT,
   EXPLICAR_PROMPT,
   RESUMEN_PROMPT,
@@ -134,6 +135,23 @@ export class AgentsService {
 
   async runConversacion(ctx: RuntimeContext): Promise<string> {
     const courses = await this.getStudentCourses(ctx);
+
+    ctx.state = await this.agentState.upsertState(
+      ctx.tenant.evolution.instance,
+      ctx.phoneNumber,
+      ctx.tenant.instructor.id,
+      {
+        flujo: 'conversacion',
+        ...(courses.length === 0
+          ? { courseId: undefined, moduleId: undefined }
+          : {}),
+      },
+    );
+
+    if (courses.length === 0) {
+      return NO_ACTIVE_COURSES_MESSAGE;
+    }
+
     const titles = JSON.stringify(courses.map((c) => c.title));
     const withIds = JSON.stringify(courses.map((c) => ({ id: c.id, titulo: c.title })));
 
