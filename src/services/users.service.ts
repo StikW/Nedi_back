@@ -139,18 +139,49 @@ export class UsersService {
   /**
    * Busca un instructor por el nombre de su instancia de Evolution.
    * Usado por el agente para resolver el tenant en cada webhook entrante.
+   *
+   * Las instancias Nedi siguen el patron `nedi_{userId}`; se resuelve por id
+   * directo (O(1)). El Scan con filtro queda como respaldo para nombres custom.
    */
   public async findByEvolutionInstance(instance: string): Promise<User | null> {
     if (!instance) return null;
-    const result = await this.dynamoClient.send(
-      new ScanCommand({
-        TableName: USERS_TABLE,
-        FilterExpression: 'evolutionInstance = :instance',
-        ExpressionAttributeValues: { ':instance': instance },
-        Limit: 1,
-      }),
-    );
-    return (result.Items?.[0] as User) || null;
+
+    const derivedId = this.instructorIdFromEvolutionInstance(instance);
+    if (derivedId) {
+      try {
+        const user = await this.findById(derivedId);
+        if (user.role === UserRole.INSTRUCTOR || user.role === UserRole.ADMIN) {
+          if (user.evolutionInstance !== instance) {
+            await this.updateEvolutionConfig(derivedId, { evolutionInstance: instance });
+          }
+          return user;
+        }
+      } catch {
+        // El uuid del nombre no corresponde a un usuario; continuar con scan
+      }
+    }
+
+    let lastKey: Record<string, unknown> | undefined;
+    do {
+      const result = await this.dynamoClient.send(
+        new ScanCommand({
+          TableName: USERS_TABLE,
+          FilterExpression: 'evolutionInstance = :instance',
+          ExpressionAttributeValues: { ':instance': instance },
+          ExclusiveStartKey: lastKey,
+        }),
+      );
+      if (result.Items?.[0]) return result.Items[0] as User;
+      lastKey = result.LastEvaluatedKey;
+    } while (lastKey);
+
+    return null;
+  }
+
+  /** Extrae el userId de instancias con formato `nedi_{uuid}`. */
+  private instructorIdFromEvolutionInstance(instance: string): string | null {
+    const match = /^nedi_([0-9a-f-]{36})$/i.exec(instance.trim());
+    return match?.[1] ?? null;
   }
 
   /**
