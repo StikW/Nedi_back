@@ -201,25 +201,71 @@ export class EvolutionAdminService {
   /** Metadatos en vivo de la instancia (token propio y numero vinculado). */
   async fetchRuntimeMeta(
     instance: string,
-  ): Promise<{ apiKey?: string; ownerNumber?: string; state?: string }> {
+  ): Promise<{
+    apiKey?: string;
+    ownerNumber?: string;
+    state?: string;
+    disconnectionAt?: string;
+    connectionStatus?: string;
+  }> {
     const apiKey = this.adminKey();
     let state: string | undefined;
+    let connectionStatus: string | undefined;
     try {
       const res = await this.request('GET', `/instance/connectionState/${instance}`, apiKey);
       state = res?.instance?.state || res?.state;
+      connectionStatus = state;
     } catch (err: any) {
       this.logger.debug(`connectionState/${instance} en fetchRuntimeMeta: ${err?.message || err}`);
     }
 
     const meta = await this.fetchInstanceMeta(instance, apiKey);
-    return { apiKey: meta.apiKey, ownerNumber: meta.number, state };
+    return {
+      apiKey: meta.apiKey,
+      ownerNumber: meta.number,
+      state,
+      connectionStatus: meta.connectionStatus || connectionStatus,
+      disconnectionAt: meta.disconnectionAt,
+    };
+  }
+
+  /**
+   * Tras un logout/reconexion reciente, Baileys puede reportar "open" pero no entregar.
+   * Reinicia la instancia una vez para estabilizar la sesion antes de enviar.
+   */
+  async warmUpSessionIfNeeded(instance: string): Promise<boolean> {
+    const meta = await this.fetchRuntimeMeta(instance);
+    if (meta.state !== 'open' && meta.connectionStatus !== 'open') return false;
+
+    const disconnectedAt = meta.disconnectionAt ? Date.parse(meta.disconnectionAt) : NaN;
+    if (!Number.isFinite(disconnectedAt)) return false;
+
+    const minutesSinceDisconnect = (Date.now() - disconnectedAt) / 60_000;
+    if (minutesSinceDisconnect > 45) return false;
+
+    this.logger.warn(
+      `Instancia "${instance}" reconectada hace ${Math.round(minutesSinceDisconnect)}m; reiniciando sesion Evolution antes de enviar`,
+    );
+    try {
+      await this.request('POST', `/instance/restart/${encodeURIComponent(instance)}`, this.adminKey());
+      await new Promise((r) => setTimeout(r, 4000));
+      return true;
+    } catch (err: any) {
+      this.logger.warn(`restart/${instance}: ${err?.message || err}`);
+      return false;
+    }
   }
 
   /** Metadatos de la instancia en Evolution (numero vinculado y apikey propia). */
   private async fetchInstanceMeta(
     instance: string,
     apiKey: string,
-  ): Promise<{ number?: string; apiKey?: string }> {
+  ): Promise<{
+    number?: string;
+    apiKey?: string;
+    connectionStatus?: string;
+    disconnectionAt?: string;
+  }> {
     try {
       const res = await this.request(
         'GET',
@@ -246,7 +292,12 @@ export class EvolutionAdminService {
         );
       }
 
-      return { number, apiKey: instanceApiKey };
+      return {
+        number,
+        apiKey: instanceApiKey,
+        connectionStatus: match?.connectionStatus || match?.instance?.connectionStatus,
+        disconnectionAt: match?.disconnectionAt || match?.instance?.disconnectionAt,
+      };
     } catch (err: any) {
       this.logger.warn(`fetchInstances/${instance}: ${err?.message || err}`);
       return {};

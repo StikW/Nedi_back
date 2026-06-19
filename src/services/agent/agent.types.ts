@@ -52,6 +52,14 @@ export interface ParsedIncomingMessage {
   messageId?: string;
   /** JID completo para responder (p. ej. 57300...@s.whatsapp.net) */
   recipientJid: string;
+  /** remoteJid crudo del webhook (puede ser @lid) */
+  remoteJid: string;
+  /** remoteJidAlt del webhook (telefono real cuando remoteJid es @lid) */
+  remoteJidAlt: string;
+  /** JID de respuesta exacto como n8n: remoteJid si tiene @s.whatsapp.net, si no remoteJidAlt */
+  replyToJid: string;
+  /** senderPn del webhook (telefono cuando solo llega @lid) */
+  senderPn?: string;
   /** payload crudo (para descargar media) */
   raw: any;
 }

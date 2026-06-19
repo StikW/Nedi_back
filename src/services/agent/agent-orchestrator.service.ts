@@ -7,6 +7,7 @@ import { MemoryService } from './memory.service';
 import { MessageBufferService } from './message-buffer.service';
 import { AgentStateService } from './agent-state.service';
 import { AgentsService, RuntimeContext } from './agents.service';
+import { EvolutionAdminService } from './evolution-admin.service';
 import { ParsedIncomingMessage, TenantContext } from './agent.types';
 
 /**
@@ -31,6 +32,7 @@ export class AgentOrchestratorService {
     private readonly buffer: MessageBufferService,
     private readonly agentState: AgentStateService,
     private readonly agents: AgentsService,
+    private readonly evolutionAdmin: EvolutionAdminService,
   ) {}
 
   /** Procesa el payload del webhook (se invoca de forma asincrona). */
@@ -69,14 +71,23 @@ export class AgentOrchestratorService {
 
     const key = `${parsed.instance}:${parsed.phoneNumber}`;
     const debounceMs = (this.configService.get<number>('AGENT_BUFFER_SECONDS') || 5) * 1000;
-    const recipientJid = parsed.recipientJid;
 
     this.logger.log(
       `[${parsed.instance}] Mensaje de ${parsed.phoneNumber}: "${text.slice(0, 80)}${text.length > 80 ? '…' : ''}" (linea instructor: ${tenant.liveOwnerNumber || tenant.instructor.evolutionNumber || tenant.instructor.phoneNumber || '?'})`,
     );
+    this.logger.debug(
+      `[${parsed.instance}] JIDs remote=${parsed.remoteJid} alt=${parsed.remoteJidAlt} replyTo=${parsed.replyToJid} senderPn=${parsed.senderPn || '-'}`,
+    );
 
     this.buffer.push(key, text, debounceMs, async (concat) => {
-      await this.process(tenant, parsed.phoneNumber, concat, recipientJid);
+      const freshTenant = await this.tenantService.resolve(parsed.instance, parsed.apikey);
+      if (!freshTenant) {
+        this.logger.error(
+          `[${parsed.instance}] No se pudo re-resolver tenant antes de responder a ${parsed.phoneNumber}`,
+        );
+        return;
+      }
+      await this.process(freshTenant, parsed, concat);
     });
   }
 
@@ -98,12 +109,12 @@ export class AgentOrchestratorService {
   /** Nucleo: clasifica y ejecuta el agente correspondiente. */
   private async process(
     tenant: TenantContext,
-    phoneNumber: string,
+    parsed: ParsedIncomingMessage,
     message: string,
-    recipientJid: string,
   ): Promise<void> {
     if (!message.trim()) return;
     const instance = tenant.evolution.instance;
+    const phoneNumber = parsed.phoneNumber;
 
     const sessionTimeoutMin =
       this.configService.get<number>('AGENT_SESSION_TIMEOUT_MINUTES') ?? 20;
@@ -136,7 +147,7 @@ export class AgentOrchestratorService {
     const ctx: RuntimeContext = {
       tenant,
       phoneNumber,
-      recipientJid,
+      recipientJid: parsed.recipientJid,
       state,
       message,
       history: this.memory.get(instance, phoneNumber),
@@ -179,8 +190,15 @@ export class AgentOrchestratorService {
       reply = '¿En qué puedo ayudarte con tu aprendizaje?';
     }
 
-    const presenceDelayMs = this.configService.get<number>('AGENT_TYPING_DELAY_MS') ?? 1200;
-    await this.send(tenant, phoneNumber, reply, recipientJid, presenceDelayMs);
+    const presenceDelayMs = this.configService.get<number>('AGENT_TYPING_DELAY_MS') ?? 2000;
+    const restarted = await this.evolutionAdmin.warmUpSessionIfNeeded(instance);
+    if (restarted) {
+      const refreshed = await this.tenantService.resolve(parsed.instance, parsed.apikey);
+      if (refreshed) {
+        tenant = refreshed;
+      }
+    }
+    await this.send(tenant, parsed, reply, presenceDelayMs);
     this.memory.append(instance, phoneNumber, message, reply);
     state = await this.agentState.upsertState(instance, phoneNumber, tenant.instructor.id, {
       lastSessionAt: new Date().toISOString(),
@@ -191,12 +209,11 @@ export class AgentOrchestratorService {
   /** Envia la respuesta de texto; la burbuja "escribiendo..." se muestra justo antes. */
   private async send(
     tenant: TenantContext,
-    phoneNumber: string,
+    parsed: ParsedIncomingMessage,
     reply: string,
-    recipientJid: string,
     presenceDelayMs: number,
   ): Promise<void> {
-    const to = recipientJid || phoneNumber;
+    const replyTargets = this.evolution.buildReplyTargets(parsed);
     const instructorLine =
       tenant.liveOwnerNumber ||
       tenant.instructor.evolutionNumber ||
@@ -206,17 +223,17 @@ export class AgentOrchestratorService {
     try {
       const result = await this.evolution.sendText(
         tenant.evolution,
-        to,
+        replyTargets,
         reply,
         presenceDelayMs,
         { linkPreview: false },
       );
       this.logger.log(
-        `[${tenant.evolution.instance}] Respuesta enviada desde linea ${instructorLine} hacia ${to} (${reply.length} chars, msgId=${result.messageId || '?'})`,
+        `[${tenant.evolution.instance}] Respuesta enviada desde linea ${instructorLine} hacia ${result.numberUsed} (${reply.length} chars, msgId=${result.messageId || '?'})`,
       );
     } catch (err: any) {
       this.logger.error(
-        `[${tenant.evolution.instance}] No se pudo enviar desde linea ${instructorLine} hacia ${to}: ${err?.message || err}`,
+        `[${tenant.evolution.instance}] No se pudo enviar desde linea ${instructorLine} hacia ${parsed.replyToJid}: ${err?.message || err}`,
       );
     }
   }
@@ -258,6 +275,11 @@ export class AgentOrchestratorService {
     const remoteJidAlt: string = key.remoteJidAlt || '';
     const senderPn: string = key.senderPn || data?.senderPn || '';
 
+    // n8n: si remoteJid tiene @s.whatsapp.net usarlo; si no, remoteJidAlt (@lid -> telefono real)
+    const replyToJid = remoteJid.includes('@s.whatsapp.net')
+      ? remoteJid
+      : remoteJidAlt || remoteJid;
+
     let recipientJid: string;
     if (remoteJid.includes('@s.whatsapp.net')) {
       recipientJid = remoteJid;
@@ -291,6 +313,10 @@ export class AgentOrchestratorService {
     return {
       phoneNumber,
       recipientJid,
+      remoteJid,
+      remoteJidAlt,
+      replyToJid,
+      senderPn: senderPn || undefined,
       message: text,
       messageType: messageType || (msg.conversation ? 'conversation' : ''),
       instance,

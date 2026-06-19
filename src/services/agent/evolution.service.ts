@@ -57,6 +57,9 @@ export class EvolutionService {
 
     if (trimmed.includes('@')) {
       const variants = [trimmed];
+      if (trimmed.endsWith('@lid')) {
+        return variants;
+      }
       const digits = trimmed.split('@')[0]?.replace(/[^0-9]/g, '') || '';
       if (digits.length >= 10) {
         variants.push(digits, `${digits}@s.whatsapp.net`);
@@ -68,20 +71,59 @@ export class EvolutionService {
     return [...new Set([digits, `${digits}@s.whatsapp.net`])];
   }
 
+  /** JIDs a probar al responder, en orden de prioridad (n8n + fallbacks @lid). */
+  buildReplyTargets(input: {
+    replyToJid: string;
+    remoteJid: string;
+    remoteJidAlt: string;
+    recipientJid: string;
+    phoneNumber: string;
+    senderPn?: string;
+  }): string[] {
+    const senderDigits = (input.senderPn || '').replace(/[^0-9]/g, '');
+    const senderJid = senderDigits.length >= 10 ? `${senderDigits}@s.whatsapp.net` : '';
+
+    const candidates = [
+      input.replyToJid,
+      input.remoteJid.endsWith('@lid') ? input.remoteJid : '',
+      input.remoteJidAlt.endsWith('@lid') ? input.remoteJidAlt : '',
+      input.remoteJid,
+      input.remoteJidAlt,
+      input.recipientJid,
+      senderJid,
+      input.phoneNumber ? `${input.phoneNumber}@s.whatsapp.net` : '',
+      input.phoneNumber,
+    ].filter(Boolean);
+
+    const expanded: string[] = [];
+    for (const candidate of candidates) {
+      expanded.push(...this.outboundNumberVariants(candidate));
+    }
+    return [...new Set(expanded)];
+  }
+
   /** Envia un mensaje de texto al estudiante. */
   async sendText(
     cfg: EvolutionConfig,
-    to: string,
+    to: string | string[],
     text: string,
     presenceDelayMs = 1200,
     options: { linkPreview?: boolean } = {},
   ): Promise<{ messageId?: string; numberUsed: string; keyUsed: string }> {
     await this.assertInstanceOpen(cfg);
 
-    const variants = this.outboundNumberVariants(to);
+    const targets = Array.isArray(to) ? to : this.outboundNumberVariants(to);
     let lastError: Error | undefined;
 
-    for (const number of variants) {
+    for (const number of targets) {
+      try {
+        await this.sendPresence(cfg, number, presenceDelayMs);
+      } catch (err: any) {
+        this.logger.debug(
+          `sendPresence ${number} en ${cfg.instance}: ${err?.message || err}`,
+        );
+      }
+
       const body = {
         number,
         text,
@@ -101,6 +143,9 @@ export class EvolutionService {
         this.logger.log(
           `sendText OK instance=${cfg.instance} to=${number} msgId=${messageId || '?'} key=...${keySuffix}`,
         );
+        this.logger.debug(
+          `sendText respuesta ${cfg.instance}: ${JSON.stringify(json).slice(0, 400)}`,
+        );
         return {
           messageId,
           numberUsed: number,
@@ -109,12 +154,26 @@ export class EvolutionService {
       } catch (err: any) {
         lastError = err instanceof Error ? err : new Error(String(err));
         this.logger.warn(
-          `sendText formato ${number} fallo en ${cfg.instance}: ${lastError.message}`,
+          `sendText destino ${number} fallo en ${cfg.instance}: ${lastError.message}`,
         );
       }
     }
 
     throw lastError || new Error(`sendText fallo para ${cfg.instance}`);
+  }
+
+  private async sendPresence(
+    cfg: EvolutionConfig,
+    to: string,
+    delayMs: number,
+  ): Promise<void> {
+    await this.postWithKeyFallback(
+      cfg,
+      `/chat/sendPresence/${cfg.instance}`,
+      { number: to, presence: 'composing', delay: delayMs },
+      'sendPresence',
+      true,
+    );
   }
 
   async sendAudio(
