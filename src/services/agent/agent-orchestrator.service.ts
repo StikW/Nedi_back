@@ -7,7 +7,6 @@ import { MemoryService } from './memory.service';
 import { MessageBufferService } from './message-buffer.service';
 import { AgentStateService } from './agent-state.service';
 import { AgentsService, RuntimeContext } from './agents.service';
-import { EvolutionAdminService } from './evolution-admin.service';
 import { ParsedIncomingMessage, TenantContext } from './agent.types';
 
 /**
@@ -32,7 +31,6 @@ export class AgentOrchestratorService {
     private readonly buffer: MessageBufferService,
     private readonly agentState: AgentStateService,
     private readonly agents: AgentsService,
-    private readonly evolutionAdmin: EvolutionAdminService,
   ) {}
 
   /** Procesa el payload del webhook (se invoca de forma asincrona). */
@@ -191,13 +189,6 @@ export class AgentOrchestratorService {
     }
 
     const presenceDelayMs = this.configService.get<number>('AGENT_TYPING_DELAY_MS') ?? 2000;
-    const restarted = await this.evolutionAdmin.warmUpSessionIfNeeded(instance);
-    if (restarted) {
-      const refreshed = await this.tenantService.resolve(parsed.instance, parsed.apikey);
-      if (refreshed) {
-        tenant = refreshed;
-      }
-    }
     await this.send(tenant, parsed, reply, presenceDelayMs);
     this.memory.append(instance, phoneNumber, message, reply);
     state = await this.agentState.upsertState(instance, phoneNumber, tenant.instructor.id, {
