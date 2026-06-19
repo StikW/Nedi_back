@@ -23,38 +23,38 @@ export class EvolutionService {
     return (cfg.serverUrl || '').replace(/\/+$/, '');
   }
 
+  private withKey(cfg: EvolutionConfig, apiKey: string): EvolutionConfig {
+    return { ...cfg, apiKey };
+  }
+
+  /** Claves de la instancia (webhook/guardada). Admin solo como ultimo recurso. */
+  private instanceKeys(cfg: EvolutionConfig): string[] {
+    const keys = cfg.apiKeys?.length ? cfg.apiKeys : [cfg.apiKey];
+    if (keys.length <= 1) return keys.filter(Boolean);
+    const last = keys[keys.length - 1];
+    const instanceOnly = keys.slice(0, -1).filter(Boolean);
+    return instanceOnly.length > 0 ? instanceOnly : keys.filter(Boolean);
+  }
+
   private allKeys(cfg: EvolutionConfig): string[] {
     const keys = cfg.apiKeys?.length ? cfg.apiKeys : [cfg.apiKey];
     return [...new Set(keys.filter(Boolean))];
   }
 
-  private withKey(cfg: EvolutionConfig, apiKey: string): EvolutionConfig {
-    return { ...cfg, apiKey };
+  private normalizeOutboundNumber(to: string): string {
+    if (!to?.trim()) return to;
+    const userPart = to.split('@')[0] || to;
+    const digits = userPart.replace(/[^0-9]/g, '');
+    if (!digits) {
+      throw new Error(`Numero de destino invalido: "${to}"`);
+    }
+    return digits;
   }
 
-  /** Presencia justo antes de enviar: `composing` (texto) o `recording` (audio). */
-  async sendPresence(
-    cfg: EvolutionConfig,
-    to: string,
-    presence: 'composing' | 'recording',
-    delayMs = 1200,
-  ): Promise<void> {
-    const number = this.normalizeOutboundNumber(to);
-    const keys = this.allKeys(cfg);
-    for (const key of keys) {
-      try {
-        await this.post(this.withKey(cfg, key), `/chat/sendPresence/${cfg.instance}`, {
-          number,
-          presence,
-          delay: delayMs,
-        });
-        return;
-      } catch (err: any) {
-        this.logger.debug(
-          `sendPresence(${presence}) con key ...${key.slice(-4)} omitido: ${err?.message || err}`,
-        );
-      }
-    }
+  /** n8n enviaba el JID completo; v2 acepta digitos. Probamos ambos. */
+  private outboundNumberVariants(to: string): string[] {
+    const digits = this.normalizeOutboundNumber(to);
+    return [...new Set([digits, `${digits}@s.whatsapp.net`])];
   }
 
   /** Envia un mensaje de texto al estudiante. */
@@ -64,43 +64,61 @@ export class EvolutionService {
     text: string,
     presenceDelayMs = 1200,
     options: { linkPreview?: boolean } = {},
-  ): Promise<void> {
-    const number = this.normalizeOutboundNumber(to);
-    await this.sendPresence(cfg, number, 'composing', presenceDelayMs);
+  ): Promise<{ messageId?: string; numberUsed: string; keyUsed: string }> {
+    await this.assertInstanceOpen(cfg);
 
-    const body = {
-      number,
-      text,
-      delay: presenceDelayMs,
-      ...(options.linkPreview === false ? { linkPreview: false } : {}),
-    };
+    const variants = this.outboundNumberVariants(to);
+    let lastError: Error | undefined;
 
-    await this.postWithKeyFallback(
-      cfg,
-      `/message/sendText/${cfg.instance}`,
-      body,
-      'sendText',
-    );
+    for (const number of variants) {
+      const body = {
+        number,
+        text,
+        delay: presenceDelayMs,
+        ...(options.linkPreview === false ? { linkPreview: false } : {}),
+      };
+
+      try {
+        const json = await this.postWithKeyFallback(
+          cfg,
+          `/message/sendText/${cfg.instance}`,
+          body,
+          'sendText',
+          true,
+        );
+        const messageId = json?.key?.id || json?.message?.key?.id;
+        this.logger.log(
+          `sendText OK instance=${cfg.instance} to=${number} msgId=${messageId || '?'}`,
+        );
+        return { messageId, numberUsed: number, keyUsed: 'instance' };
+      } catch (err: any) {
+        lastError = err instanceof Error ? err : new Error(String(err));
+        this.logger.warn(
+          `sendText formato ${number} fallo en ${cfg.instance}: ${lastError.message}`,
+        );
+      }
+    }
+
+    throw lastError || new Error(`sendText fallo para ${cfg.instance}`);
   }
 
-  /** Envia una nota de voz (audio en base64). */
   async sendAudio(
     cfg: EvolutionConfig,
     to: string,
     audioBase64: string,
-    presenceDelayMs = 1200,
+    _presenceDelayMs = 1200,
   ): Promise<void> {
+    await this.assertInstanceOpen(cfg);
     const number = this.normalizeOutboundNumber(to);
-    await this.sendPresence(cfg, number, 'recording', presenceDelayMs);
     await this.postWithKeyFallback(
       cfg,
       `/message/sendWhatsAppAudio/${cfg.instance}`,
       { number, audio: audioBase64 },
       'sendAudio',
+      true,
     );
   }
 
-  /** Envia media (imagen/documento/video) por URL o base64. */
   async sendMedia(
     cfg: EvolutionConfig,
     to: string,
@@ -113,6 +131,7 @@ export class EvolutionService {
       delay?: number;
     } = {},
   ): Promise<void> {
+    await this.assertInstanceOpen(cfg);
     const number = this.normalizeOutboundNumber(to);
     await this.postWithKeyFallback(
       cfg,
@@ -127,10 +146,10 @@ export class EvolutionService {
         delay: options.delay,
       },
       'sendMedia',
+      true,
     );
   }
 
-  /** Envia un video del modulo (equivalente al sub-workflow sendVideo). */
   async sendVideo(
     cfg: EvolutionConfig,
     to: string,
@@ -146,10 +165,6 @@ export class EvolutionService {
     });
   }
 
-  /**
-   * Descarga el contenido base64 de un mensaje de media (audio/imagen) recibido.
-   * Equivale a `get_audio` / `get_image` (getBase64FromMediaMessage).
-   */
   async getBase64FromMediaMessage(cfg: EvolutionConfig, rawMessage: any): Promise<string | null> {
     try {
       const res = await this.postWithKeyFallback(
@@ -157,6 +172,7 @@ export class EvolutionService {
         `/chat/getBase64FromMediaMessage/${cfg.instance}`,
         { message: rawMessage, convertToMp4: false },
         'getBase64FromMediaMessage',
+        false,
       );
       return res?.base64 || null;
     } catch (err: any) {
@@ -165,14 +181,21 @@ export class EvolutionService {
     }
   }
 
-  private normalizeOutboundNumber(to: string): string {
-    if (!to?.trim()) return to;
-    const userPart = to.split('@')[0] || to;
-    const digits = userPart.replace(/[^0-9]/g, '');
-    if (!digits) {
-      throw new Error(`Numero de destino invalido: "${to}"`);
+  private async assertInstanceOpen(cfg: EvolutionConfig): Promise<void> {
+    const keys = this.allKeys(cfg);
+    for (const key of keys) {
+      try {
+        const json = await this.get(this.withKey(cfg, key), `/instance/connectionState/${cfg.instance}`);
+        const state = json?.instance?.state || json?.state || 'close';
+        if (state === 'open') return;
+        throw new Error(`state=${state}`);
+      } catch (err: any) {
+        this.logger.warn(
+          `connectionState ${cfg.instance} con key ...${key.slice(-4)}: ${err?.message || err}`,
+        );
+      }
     }
-    return digits;
+    throw new Error(`Instancia Evolution "${cfg.instance}" no esta conectada (open)`);
   }
 
   private isMessageDelivered(json: any): boolean {
@@ -184,34 +207,54 @@ export class EvolutionService {
     path: string,
     body: any,
     label: string,
+    instanceKeysOnlyFirst: boolean,
   ): Promise<any> {
-    const keys = this.allKeys(cfg);
+    const keySets = instanceKeysOnlyFirst
+      ? [this.instanceKeys(cfg), this.allKeys(cfg)]
+      : [this.allKeys(cfg)];
+
     let lastError: Error | undefined;
 
-    for (let i = 0; i < keys.length; i++) {
-      const key = keys[i];
-      try {
-        const json = await this.post(this.withKey(cfg, key), path, body);
-        if (path.includes('/message/send') && !this.isMessageDelivered(json)) {
-          throw new Error(
-            `Evolution no confirmo entrega (${label}): ${JSON.stringify(json).slice(0, 200)}`,
+    for (const keys of keySets) {
+      for (let i = 0; i < keys.length; i++) {
+        const key = keys[i];
+        try {
+          const json = await this.post(this.withKey(cfg, key), path, body);
+          if (path.includes('/message/send') && !this.isMessageDelivered(json)) {
+            throw new Error(
+              `Evolution no confirmo entrega (${label}): ${JSON.stringify(json).slice(0, 200)}`,
+            );
+          }
+          if (i > 0 || keys !== keySets[0]) {
+            const isAdminFallback = key === cfg.apiKeys?.[cfg.apiKeys.length - 1];
+            this.logger.log(
+              `${label} OK en ${cfg.instance} con apikey alternativa (set ${keySets.indexOf(keys) + 1}, intento ${i + 1}${isAdminFallback ? ', admin fallback' : ''})`,
+            );
+          }
+          return json;
+        } catch (err: any) {
+          lastError = err instanceof Error ? err : new Error(String(err));
+          this.logger.warn(
+            `${label} key ...${key.slice(-4)} fallo en ${cfg.instance}: ${lastError.message}`,
           );
         }
-        if (i > 0) {
-          this.logger.log(
-            `${label} OK en instancia ${cfg.instance} con apikey alternativa (intento ${i + 1})`,
-          );
-        }
-        return json;
-      } catch (err: any) {
-        lastError = err instanceof Error ? err : new Error(String(err));
-        this.logger.warn(
-          `${label} intento ${i + 1}/${keys.length} fallo en ${cfg.instance}: ${lastError.message}`,
-        );
       }
     }
 
     throw lastError || new Error(`${label} fallo sin apikeys validas`);
+  }
+
+  private async get(cfg: EvolutionConfig, path: string): Promise<any> {
+    const url = `${this.base(cfg)}${path}`;
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: this.headers(cfg.apiKey),
+    });
+    const json: any = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(`Evolution GET ${path} -> ${res.status} ${json?.message || ''}`);
+    }
+    return json;
   }
 
   private async post(cfg: EvolutionConfig, path: string, body: any): Promise<any> {
@@ -230,14 +273,11 @@ export class EvolutionService {
     }
     if (json?.error || json?.status === 'error') {
       const msg = json?.message || JSON.stringify(json).slice(0, 200);
-      this.logger.error(`Evolution ${path} respondio error instance=${cfg.instance} to=${body?.number || '?'}: ${msg}`);
       throw new Error(`Evolution API error: ${msg}`);
     }
     const nestedError = json?.response?.message;
     if (Array.isArray(nestedError) && nestedError.some((m: any) => m?.exists === false)) {
-      const msg = JSON.stringify(nestedError).slice(0, 300);
-      this.logger.error(`Evolution ${path} destino no valido instance=${cfg.instance} to=${body?.number || '?'}: ${msg}`);
-      throw new Error(`Evolution API: destino no valido (${msg})`);
+      throw new Error(`Evolution API: destino no valido (${JSON.stringify(nestedError).slice(0, 300)})`);
     }
     return json;
   }

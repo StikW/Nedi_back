@@ -165,7 +165,7 @@ export class EvolutionAdminService {
       }
       const webhook = this.webhookUrl();
       if (webhook) {
-        await this.safeSetWebhook(instance, apiKey, webhook);
+        await this.safeSetWebhook(instance, meta.apiKey || apiKey, webhook);
       }
     }
 
@@ -196,6 +196,23 @@ export class EvolutionAdminService {
     if (state === 'connecting') return 'connecting';
     if (instructor.evolutionStatus === 'connecting') return 'connecting';
     return 'disconnected';
+  }
+
+  /** Metadatos en vivo de la instancia (token propio y numero vinculado). */
+  async fetchRuntimeMeta(
+    instance: string,
+  ): Promise<{ apiKey?: string; ownerNumber?: string; state?: string }> {
+    const apiKey = this.adminKey();
+    let state: string | undefined;
+    try {
+      const res = await this.request('GET', `/instance/connectionState/${instance}`, apiKey);
+      state = res?.instance?.state || res?.state;
+    } catch (err: any) {
+      this.logger.debug(`connectionState/${instance} en fetchRuntimeMeta: ${err?.message || err}`);
+    }
+
+    const meta = await this.fetchInstanceMeta(instance, apiKey);
+    return { apiKey: meta.apiKey, ownerNumber: meta.number, state };
   }
 
   /** Metadatos de la instancia en Evolution (numero vinculado y apikey propia). */

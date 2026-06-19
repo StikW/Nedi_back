@@ -20,6 +20,8 @@ export interface EvolutionConfig {
 export interface TenantContext {
   instructor: User;
   evolution: EvolutionConfig;
+  /** Numero vinculado en Evolution (ownerJid), aunque aun no este en BD */
+  liveOwnerNumber?: string;
 }
 
 /** Tipos de flujo de la conversacion (estado por telefono). */

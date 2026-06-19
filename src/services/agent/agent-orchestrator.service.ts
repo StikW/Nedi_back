@@ -72,7 +72,7 @@ export class AgentOrchestratorService {
     const recipientJid = parsed.recipientJid;
 
     this.logger.log(
-      `[${parsed.instance}] Mensaje de ${parsed.phoneNumber}: "${text.slice(0, 80)}${text.length > 80 ? '…' : ''}"`,
+      `[${parsed.instance}] Mensaje de ${parsed.phoneNumber}: "${text.slice(0, 80)}${text.length > 80 ? '…' : ''}" (linea instructor: ${tenant.liveOwnerNumber || tenant.instructor.evolutionNumber || tenant.instructor.phoneNumber || '?'})`,
     );
 
     this.buffer.push(key, text, debounceMs, async (concat) => {
@@ -81,8 +81,12 @@ export class AgentOrchestratorService {
   }
 
   private warnIfInstructorSelfChat(tenant: TenantContext, phoneNumber: string): void {
-    const instructorDigits = (tenant.instructor.evolutionNumber || tenant.instructor.phoneNumber || '')
-      .replace(/[^0-9]/g, '');
+    const instructorDigits = (
+      tenant.liveOwnerNumber ||
+      tenant.instructor.evolutionNumber ||
+      tenant.instructor.phoneNumber ||
+      ''
+    ).replace(/[^0-9]/g, '');
     const senderDigits = phoneNumber.replace(/[^0-9]/g, '');
     if (instructorDigits && senderDigits && instructorDigits === senderDigits) {
       this.logger.warn(
@@ -193,8 +197,14 @@ export class AgentOrchestratorService {
     presenceDelayMs: number,
   ): Promise<void> {
     const to = phoneNumber || recipientJid;
+    const instructorLine =
+      tenant.liveOwnerNumber ||
+      tenant.instructor.evolutionNumber ||
+      tenant.instructor.phoneNumber ||
+      '?';
+
     try {
-      await this.evolution.sendText(
+      const result = await this.evolution.sendText(
         tenant.evolution,
         to,
         reply,
@@ -202,11 +212,11 @@ export class AgentOrchestratorService {
         { linkPreview: false },
       );
       this.logger.log(
-        `[${tenant.evolution.instance}] Respuesta enviada a ${to} (${reply.length} chars)`,
+        `[${tenant.evolution.instance}] Respuesta enviada desde linea ${instructorLine} hacia ${to} (${reply.length} chars, msgId=${result.messageId || '?'})`,
       );
     } catch (err: any) {
       this.logger.error(
-        `[${tenant.evolution.instance}] No se pudo enviar respuesta a ${to}: ${err?.message || err}`,
+        `[${tenant.evolution.instance}] No se pudo enviar desde linea ${instructorLine} hacia ${to}: ${err?.message || err}`,
       );
     }
   }
