@@ -77,7 +77,7 @@ export class MetaWhatsAppCloudService {
     }
   }
 
-  /** Lista plantillas aprobadas desde Meta Graph API. */
+  /** Lista plantillas desde Meta Graph API. */
   async fetchTemplatesFromMeta(): Promise<Array<Record<string, unknown>>> {
     const config = await this.getResolvedConfig();
     const endpoint = `/${config.graphApiVersion}/${config.businessAccountId}/message_templates?limit=100`;
@@ -89,6 +89,53 @@ export class MetaWhatsAppCloudService {
     }
 
     return ((result.data as any)?.data as Array<Record<string, unknown>>) || [];
+  }
+
+  /** Envía una plantilla nueva a revisión en Meta Business. */
+  async submitTemplateToMeta(input: {
+    name: string;
+    language: string;
+    category: string;
+    content: string;
+    variableExamples?: string[];
+  }): Promise<{ success: boolean; status?: string; id?: string; error?: string }> {
+    const config = await this.getResolvedConfig();
+    const endpoint = `/${config.graphApiVersion}/${config.businessAccountId}/message_templates`;
+
+    const bodyComponent: Record<string, unknown> = {
+      type: 'BODY',
+      text: input.content,
+    };
+
+    if (input.variableExamples && input.variableExamples.length > 0) {
+      bodyComponent.example = {
+        body_text: [input.variableExamples],
+      };
+    }
+
+    const body = {
+      name: input.name,
+      language: input.language,
+      category: input.category.toUpperCase(),
+      parameter_format: 'POSITIONAL',
+      components: [bodyComponent],
+    };
+
+    const result = await this.callGraph('POST', endpoint, body, config);
+
+    if (!result.ok) {
+      const errorMessage =
+        (result.data?.error as any)?.message ||
+        (result.data?.error as any)?.error_user_msg ||
+        `HTTP ${result.status}`;
+      return { success: false, error: errorMessage };
+    }
+
+    return {
+      success: true,
+      id: (result.data as any)?.id as string | undefined,
+      status: (result.data as any)?.status as string | undefined,
+    };
   }
 
   /** Envía un mensaje template vía WhatsApp Cloud API. */

@@ -1,4 +1,4 @@
-import { IsEmail, IsEnum, IsNotEmpty, IsOptional, IsString, ValidateIf } from 'class-validator';
+import { IsArray, IsBoolean, IsEmail, IsEnum, IsNotEmpty, IsOptional, IsString, ValidateIf } from 'class-validator';
 import { MetaContactStatus } from './meta-contact.entity';
 import { MetaTemplateStatus } from './meta-template.entity';
 
@@ -68,6 +68,17 @@ export class CreateMetaTemplateDto {
   @IsString()
   @IsNotEmpty()
   content!: string;
+
+  /** Si es true, envía la plantilla a Meta para revisión (por defecto en creación desde el panel). */
+  @IsBoolean()
+  @IsOptional()
+  submitToMeta?: boolean;
+
+  /** Ejemplos para {{1}}, {{2}}, etc. Requeridos si el contenido tiene variables y submitToMeta es true. */
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  variableExamples?: string[];
 }
 
 export class UpdateMetaTemplateDto {

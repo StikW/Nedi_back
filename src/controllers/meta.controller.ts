@@ -7,6 +7,7 @@ import {
   Body,
   Param,
   UseGuards,
+  BadRequestException,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../strategies/jwt-auth.guard';
@@ -154,8 +155,65 @@ export class MetaController {
   }
 
   @Post('templates')
-  createTemplate(@Body() dto: CreateMetaTemplateDto) {
-    return this.templatesService.create(dto);
+  async createTemplate(@Body() dto: CreateMetaTemplateDto) {
+    const submitToMeta = dto.submitToMeta !== false;
+    const variableIndices = this.extractVariableIndices(dto.content);
+
+    if (submitToMeta) {
+      const name = dto.name.trim();
+      if (!/^[a-z0-9_]+$/.test(name)) {
+        throw new BadRequestException(
+          'El nombre para Meta solo puede tener minúsculas, números y guiones bajos (ej: tututor_demo)',
+        );
+      }
+
+      if (variableIndices.length > 0) {
+        const examples = dto.variableExamples || [];
+        if (examples.length !== variableIndices.length) {
+          throw new BadRequestException(
+            `El contenido tiene ${variableIndices.length} variable(s). Proporciona un ejemplo para cada una.`,
+          );
+        }
+      }
+
+      const result = await this.whatsappCloud.submitTemplateToMeta({
+        name,
+        language: dto.language.trim(),
+        category: dto.category,
+        content: dto.content.trim(),
+        variableExamples: dto.variableExamples,
+      });
+
+      if (!result.success) {
+        throw new ServiceUnavailableException(
+          result.error || 'No se pudo enviar la plantilla a Meta',
+        );
+      }
+
+      const template = await this.templatesService.create({
+        name,
+        category: dto.category,
+        language: dto.language.trim(),
+        status: 'pending',
+        content: dto.content.trim(),
+      });
+
+      return {
+        ...template,
+        metaSubmitted: true,
+        metaTemplateId: result.id,
+        metaStatus: result.status || 'PENDING',
+        message: 'Plantilla enviada a Meta para revisión. Sincroniza cuando esté aprobada.',
+      };
+    }
+
+    return this.templatesService.create({
+      name: dto.name.trim(),
+      category: dto.category,
+      language: dto.language.trim(),
+      status: dto.status || 'pending',
+      content: dto.content.trim(),
+    });
   }
 
   @Put('templates/:id')
@@ -253,11 +311,15 @@ export class MetaController {
     return (body?.text as string) || '';
   }
 
-  private resolveBodyParams(content: string, variables: Record<string, string>): string[] {
+  private extractVariableIndices(content: string): string[] {
     const matches = content.match(/\{\{(\d+)\}\}/g) || [];
-    const indices = [...new Set(matches.map((m) => m.replace(/\D/g, '')))].sort(
+    return [...new Set(matches.map((m) => m.replace(/\D/g, '')))].sort(
       (a, b) => Number(a) - Number(b),
     );
+  }
+
+  private resolveBodyParams(content: string, variables: Record<string, string>): string[] {
+    const indices = this.extractVariableIndices(content);
     return indices.map((i) => variables[i] || '');
   }
 
