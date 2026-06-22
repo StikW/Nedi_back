@@ -194,6 +194,42 @@ const tables = [
     attributeDefinitions: [{ AttributeName: 'id', AttributeType: 'S' }],
     globalSecondaryIndexes: [],
   },
+  {
+    name: tableName('MetaContacts'),
+    keySchema: [{ AttributeName: 'id', KeyType: 'HASH' }],
+    attributeDefinitions: [{ AttributeName: 'id', AttributeType: 'S' }],
+    globalSecondaryIndexes: [],
+  },
+  {
+    name: tableName('MetaTemplates'),
+    keySchema: [{ AttributeName: 'id', KeyType: 'HASH' }],
+    attributeDefinitions: [{ AttributeName: 'id', AttributeType: 'S' }],
+    globalSecondaryIndexes: [],
+  },
+  {
+    name: tableName('MetaApiConfig'),
+    keySchema: [{ AttributeName: 'id', KeyType: 'HASH' }],
+    attributeDefinitions: [{ AttributeName: 'id', AttributeType: 'S' }],
+    globalSecondaryIndexes: [],
+  },
+  {
+    name: tableName('MetaMessages'),
+    keySchema: [{ AttributeName: 'id', KeyType: 'HASH' }],
+    attributeDefinitions: [{ AttributeName: 'id', AttributeType: 'S' }],
+    globalSecondaryIndexes: [],
+  },
+  {
+    name: tableName('MetaWebhookEvents'),
+    keySchema: [{ AttributeName: 'id', KeyType: 'HASH' }],
+    attributeDefinitions: [{ AttributeName: 'id', AttributeType: 'S' }],
+    globalSecondaryIndexes: [],
+  },
+  {
+    name: tableName('MetaApiLogs'),
+    keySchema: [{ AttributeName: 'id', KeyType: 'HASH' }],
+    attributeDefinitions: [{ AttributeName: 'id', AttributeType: 'S' }],
+    globalSecondaryIndexes: [],
+  },
 ];
 
 async function tableExists(client, name) {

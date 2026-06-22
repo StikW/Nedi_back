@@ -1,4 +1,4 @@
-import { IsEmail, IsNotEmpty, IsString, MinLength, IsEnum, IsOptional, ValidateIf, Matches } from 'class-validator';
+import { IsEmail, IsNotEmpty, IsString, MinLength, IsEnum, IsOptional, ValidateIf, Matches, IsBoolean } from 'class-validator';
 import { UserRole } from './user.entity';
 
 /**
@@ -22,6 +22,10 @@ export class UpdateUserDto {
   @IsEnum(UserRole)
   @IsOptional()
   public role?: UserRole;
+
+  @IsBoolean()
+  @IsOptional()
+  public isActive?: boolean;
 
   /**
    * Tel\u00e9fono del instructor en formato E.164 (con o sin "+").
@@ -72,6 +76,8 @@ export class UserResponseDto {
   public name!: string;
   /** User's role in the system */
   public role!: UserRole;
+  /** Whether the account is active */
+  public isActive?: boolean;
   /** Tel\u00e9fono del instructor (E.164). Solo expuesto para instructores/admin. */
   public phoneNumber?: string;
   /** When the user was created */

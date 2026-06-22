@@ -53,6 +53,10 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
+    if (user.isActive === false) {
+      throw new UnauthorizedException('Cuenta desactivada. Contacta al administrador.');
+    }
+
     const accessToken = this.generateToken(user);
 
     return {

@@ -4,7 +4,8 @@
 export enum UserRole {
   ADMIN = 'admin',
   INSTRUCTOR = 'instructor',
-  STUDENT = 'student'
+  STUDENT = 'student',
+  META = 'meta',
 }
 
 /**
@@ -21,6 +22,8 @@ export interface User {
   name: string;
   /** User's role in the system */
   role: UserRole;
+  /** Whether the account is active (defaults to true). Used for Meta and other roles. */
+  isActive?: boolean;
   /**
    * User's phone number in E.164 format (e.g. +573001234567).
    * Solo aplica para instructores: se usa como número del "tutor NEDI" que se

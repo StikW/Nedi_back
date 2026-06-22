@@ -39,6 +39,12 @@ Inventario alineado con el script `scripts/create-dynamodb-tables.js` y el uso r
 | **Workflows** | `id` | `ownerId-index` |
 | **Credentials** | `id` | `instructorId-index` |
 | **TokenBlacklist** | `token` | — |
+| **MetaContacts** | `id` | — |
+| **MetaTemplates** | `id` | — |
+| **MetaApiConfig** | `id` (`GLOBAL`) | — |
+| **MetaMessages** | `id` | — |
+| **MetaWebhookEvents** | `id` | — |
+| **MetaApiLogs** | `id` | — |
 
 ## Crear tablas
 

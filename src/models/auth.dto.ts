@@ -1,4 +1,4 @@
-import { IsEmail, IsNotEmpty, IsString, MinLength, IsEnum, IsOptional, ValidateIf, Matches } from 'class-validator';
+import { IsEmail, IsNotEmpty, IsString, MinLength, IsEnum, IsOptional, ValidateIf, Matches, IsBoolean } from 'class-validator';
 import { UserRole } from './user.entity';
 
 /**
@@ -21,6 +21,11 @@ export class RegisterDto {
   @IsEnum(UserRole)
   @IsOptional()
   public role?: UserRole;
+
+  /** Account active status (Meta users and others). Defaults to true. */
+  @IsBoolean()
+  @IsOptional()
+  public isActive?: boolean;
 
   /**
    * Tel\u00e9fono del instructor en formato E.164 (con o sin "+").

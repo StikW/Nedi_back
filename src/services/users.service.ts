@@ -53,7 +53,8 @@ export class UsersService {
       email: registerDto.email,
       password: hashedPassword,
       name: registerDto.name,
-      role: registerDto.role || UserRole.STUDENT, // Default role is STUDENT
+      role: registerDto.role || UserRole.STUDENT,
+      isActive: registerDto.isActive !== undefined ? registerDto.isActive : true,
       phoneNumber: registerDto.phoneNumber
         ? this.normalizePhoneNumber(registerDto.phoneNumber)
         : undefined,
@@ -344,6 +345,12 @@ export class UsersService {
       updateExpression.push('#role = :role');
       expressionAttributeNames['#role'] = 'role';
       expressionAttributeValues[':role'] = updateDto.role;
+    }
+
+    if (updateDto.isActive !== undefined) {
+      updateExpression.push('#isActive = :isActive');
+      expressionAttributeNames['#isActive'] = 'isActive';
+      expressionAttributeValues[':isActive'] = updateDto.isActive;
     }
 
     if (updateDto.phoneNumber !== undefined) {
