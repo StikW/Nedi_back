@@ -14,6 +14,7 @@ import { AgentState } from '../../models/agent-state.entity';
 import { CourseModule } from '../../models/course-module.entity';
 import {
   CLASSIFIER_PROMPT,
+  CONVERSACION_INICIAL_PROMPT,
   CONVERSACION_PROMPT,
   NO_ACTIVE_COURSES_MESSAGE,
   RESPUESTAS_PROMPT,
@@ -64,13 +65,23 @@ export class AgentsService {
   async runConversacionInicial(ctx: RuntimeContext): Promise<string> {
     await this.recordWelcomeSession(ctx);
 
-    return [
-      'Hola, soy *Nedi*. Estoy aquí para acompañarte en tu aprendizaje por WhatsApp.',
-      '',
-      '• Ver tus cursos disponibles',
-      '',
-      'Escribe *ver cursos* cuando quieras continuar.',
-    ].join('\n');
+    if (this.isCourseListIntent(ctx.message)) {
+      const courses = await this.getStudentCourses(ctx);
+      return courses.length === 0
+        ? NO_ACTIVE_COURSES_MESSAGE
+        : this.formatCourseList(courses);
+    }
+
+    const courses = await this.getStudentCourses(ctx);
+    if (courses.length === 0) {
+      return NO_ACTIVE_COURSES_MESSAGE;
+    }
+
+    return this.llm.runAgent({
+      system: CONVERSACION_INICIAL_PROMPT,
+      userMessage: ctx.message,
+      history: [],
+    });
   }
 
   /** Suma loginCount al entrar al agente de bienvenida (primer contacto o sesión expirada). */
