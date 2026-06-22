@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { CourseModuleService } from '../course-module.service';
 import { UploadsService } from '../uploads.service';
 import { RagService } from './rag.service';
+import { ModuleResource } from '../../models/course-module.entity';
 // pdf-parse no expone tipos ESM; require directo evita el bloque de "debug" del paquete
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const pdfParse = require('pdf-parse');
@@ -45,11 +46,17 @@ export class VectorizationService {
    * Equivale al flujo de WF_GeneradorPreguntas (agregar todo el PDF, no RAG parcial).
    */
   async extractModuleDocumentText(courseId: string, moduleId: string): Promise<ModuleDocumentText> {
-    const keys = await this.uploadsService.listModuleFileKeys(courseId, moduleId);
+    const module = await this.courseModuleService.findOne(moduleId);
+    const keys = [
+      ...(await this.uploadsService.listModuleFileKeys(courseId, moduleId)),
+      ...this.keysFromModuleResources(module?.resources),
+    ];
+    const uniqueKeys = [...new Set(keys)];
+
     const texts: string[] = [];
     let processedFiles = 0;
 
-    for (const key of keys) {
+    for (const key of uniqueKeys) {
       const ext = this.extension(key);
       if (!['pdf', 'txt', 'md', 'text'].includes(ext)) {
         this.logger.warn(`Saltando archivo no soportado para extraer texto: ${key}`);
@@ -76,7 +83,6 @@ export class VectorizationService {
       };
     }
 
-    const module = await this.courseModuleService.findOne(moduleId);
     const fallback = this.sanitizeEducationalText(
       [module?.title, module?.description].filter(Boolean).join('\n\n'),
     );
@@ -88,6 +94,30 @@ export class VectorizationService {
       `Modulo ${moduleId} sin PDF/TXT en S3; se usa titulo/descripcion como fallback (sin URL de video).`,
     );
     return { text: fallback, files: 0, source: 'fallback' };
+  }
+
+  /** Obtiene keys S3 a partir de las URLs guardadas en module.resources. */
+  keysFromModuleResources(resources?: ModuleResource[]): string[] {
+    if (!resources?.length) return [];
+    const keys: string[] = [];
+    for (const resource of resources) {
+      const key = this.s3KeyFromResourceUrl(resource.url);
+      if (key) keys.push(key);
+    }
+    return keys;
+  }
+
+  private s3KeyFromResourceUrl(url: string | undefined): string | null {
+    if (!url?.trim()) return null;
+    try {
+      const parsed = new URL(url.trim());
+      const key = decodeURIComponent(parsed.pathname.replace(/^\/+/, ''));
+      if (key.startsWith('courses/') && key.includes('/modules/')) return key;
+    } catch {
+      const match = url.match(/courses\/[^?\s]+/);
+      if (match) return match[0];
+    }
+    return null;
   }
 
   /**

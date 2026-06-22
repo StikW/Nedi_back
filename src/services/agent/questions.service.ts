@@ -40,6 +40,12 @@ Requisitos:
   ]
 }`;
 
+export type GenerateQuestionsResult = {
+  questions: ModuleQuestion[];
+  /** true cuando no hay PDF/TXT del modulo en S3 ni en recursos registrados */
+  noDocument?: boolean;
+};
+
 export type CurrentQuestionState =
   | { state: 'question'; index: number; total: number; question: ModuleQuestion }
   | { state: 'finished' }
@@ -101,7 +107,7 @@ export class QuestionsService {
    * Genera el banco de preguntas del modulo usando el documento completo del
    * modulo (PDF/TXT en S3), igual que WF_GeneradorPreguntas en n8n.
    */
-  async generateQuestions(courseId: string, moduleId: string): Promise<ModuleQuestion[]> {
+  async generateQuestions(courseId: string, moduleId: string): Promise<GenerateQuestionsResult> {
     const doc = await this.vectorization.extractModuleDocumentText(courseId, moduleId);
     let material = doc.text;
 
@@ -113,7 +119,7 @@ export class QuestionsService {
       this.logger.warn(
         `Material insuficiente para generar preguntas del modulo ${moduleId} (source=${doc.source}, files=${doc.files})`,
       );
-      return [];
+      return { questions: [], noDocument: doc.files === 0 && doc.source !== 's3' };
     }
 
     if (doc.source === 'fallback') {
@@ -130,10 +136,11 @@ export class QuestionsService {
     const questions = this.postProcessQuestions(this.parseQuestions(raw));
     if (questions.length > 0) {
       await this.agentState.saveQuestionBank(courseId, moduleId, questions);
-    } else {
-      this.logger.warn(`Generador no devolvio preguntas validas para modulo ${moduleId}`);
+      return { questions };
     }
-    return questions;
+
+    this.logger.warn(`Generador no devolvio preguntas validas para modulo ${moduleId}`);
+    return { questions: [] };
   }
 
   private parseQuestions(raw: string): ModuleQuestion[] {

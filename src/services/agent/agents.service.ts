@@ -14,7 +14,6 @@ import { AgentState } from '../../models/agent-state.entity';
 import { CourseModule } from '../../models/course-module.entity';
 import {
   CLASSIFIER_PROMPT,
-  CONVERSACION_INICIAL_PROMPT,
   CONVERSACION_PROMPT,
   NO_ACTIVE_COURSES_MESSAGE,
   RESPUESTAS_PROMPT,
@@ -65,11 +64,13 @@ export class AgentsService {
   async runConversacionInicial(ctx: RuntimeContext): Promise<string> {
     await this.recordWelcomeSession(ctx);
 
-    return this.llm.runAgent({
-      system: CONVERSACION_INICIAL_PROMPT,
-      userMessage: ctx.message,
-      history: [],
-    });
+    return [
+      'Hola, soy *Nedi*. Estoy aquí para acompañarte en tu aprendizaje por WhatsApp.',
+      '',
+      '• Ver tus cursos disponibles',
+      '',
+      'Escribe *ver cursos* cuando quieras continuar.',
+    ].join('\n');
   }
 
   /** Suma loginCount al entrar al agente de bienvenida (primer contacto o sesión expirada). */
@@ -240,8 +241,17 @@ export class AgentsService {
     // Obtener o generar banco de preguntas
     let current = await this.questions.getCurrentQuestion(courseId, moduleId, ctx.phoneNumber);
     if (current.state === 'empty') {
-      const generated = await this.questions.generateQuestions(courseId, moduleId);
+      const { questions: generated, noDocument } = await this.questions.generateQuestions(
+        courseId,
+        moduleId,
+      );
       if (generated.length === 0) {
+        if (noDocument) {
+          return (
+            'Este módulo aún no tiene un documento PDF cargado, así que no puedo generar preguntas. ' +
+            'Pide a tu instructor que suba el material del módulo desde el panel y vuelve a intentarlo.'
+          );
+        }
         return 'No fue posible generar preguntas con el material disponible. Intenta más tarde.';
       }
       current = await this.questions.getCurrentQuestion(courseId, moduleId, ctx.phoneNumber);
@@ -580,9 +590,7 @@ export class AgentsService {
     try {
       return await this.uploads.getModuleDownloadUrl(module.courseId, module.id, fullKey, 3600);
     } catch {
-      const bucket = this.configService.get<string>('S3_BUCKET_MODULES');
-      const region = this.configService.get<string>('AWS_REGION') || 'us-east-1';
-      return bucket ? `https://${bucket}.s3.${region}.amazonaws.com/${fullKey}` : null;
+      return `${this.uploads.getModulesPublicBaseUrl()}/${fullKey}`;
     }
   }
 

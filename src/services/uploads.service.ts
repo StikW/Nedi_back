@@ -11,6 +11,7 @@ export interface UploadUrlResponse {
 @Injectable()
 export class UploadsService {
   private readonly s3Client: S3Client;
+  private readonly awsRegion: string;
   private readonly courseBucketName: string;
   private readonly modulesBucketName: string;
 
@@ -18,14 +19,39 @@ export class UploadsService {
     const region = this.configService.get<string>('AWS_REGION');
     const courseBucket = this.configService.get<string>('S3_BUCKET');
     const modulesBucket = this.configService.get<string>('S3_BUCKET_MODULES');
-    
+
     if (!region || !courseBucket || !modulesBucket) {
       throw new Error('AWS_REGION, S3_BUCKET, and S3_BUCKET_MODULES environment variables are required');
     }
-    
+
+    this.awsRegion = region;
     this.s3Client = new S3Client({ region });
     this.courseBucketName = courseBucket;
     this.modulesBucketName = modulesBucket;
+  }
+
+  /** Bucket de imagenes/recursos del curso (`S3_BUCKET` en .env). */
+  getCourseBucketName(): string {
+    return this.courseBucketName;
+  }
+
+  /** Bucket de PDFs de modulos (`S3_BUCKET_MODULES` en .env). */
+  getModulesBucketName(): string {
+    return this.modulesBucketName;
+  }
+
+  /** URL publica del bucket de recursos, derivada de .env. */
+  getResourcesPublicBaseUrl(): string {
+    return this.buildPublicBaseUrl(this.courseBucketName);
+  }
+
+  /** URL publica del bucket de modulos, derivada de .env. */
+  getModulesPublicBaseUrl(): string {
+    return this.buildPublicBaseUrl(this.modulesBucketName);
+  }
+
+  private buildPublicBaseUrl(bucketName: string): string {
+    return `https://${bucketName}.s3.${this.awsRegion}.amazonaws.com`;
   }
 
   /**
