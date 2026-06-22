@@ -4,11 +4,12 @@ import { ModuleProgressService } from '../module-progress.service';
 import { AgentStateService } from './agent-state.service';
 import { RagService } from './rag.service';
 import { LlmService } from './llm.service';
+import { VectorizationService } from './vectorization.service';
 import { CourseModule } from '../../models/course-module.entity';
 import { ModuleQuestion } from '../../models/course-module-questions.entity';
 
 const GENERATOR_PROMPT = `Eres un generador de preguntas educativas.
-Tu tarea es analizar el contenido proporcionado del módulo de un curso y producir un conjunto de preguntas que evalúen la comprensión del usuario.
+Tu tarea es analizar el contenido proporcionado del módulo de un curso y producir un conjunto de preguntas que evalúen la comprensión del usuario sobre los CONCEPTOS y APRENDIZAJES del material.
 
 Requisitos:
 - Genera entre 5 y 7 preguntas por módulo.
@@ -20,10 +21,11 @@ Requisitos:
   - "respuesta_correcta": pares item-letra (ej. "1-C, 2-A, 3-B, 4-D") donde el emparejamiento NO sea secuencial (evita 1-A, 2-B, 3-C...).
   - NO incluyas la respuesta correcta ni pares ya resueltos en "opciones".
   - "pregunta" solo debe tener la instrucción breve.
-- Para tipo "completar" u "opcion_multiple": la respuesta debe estar respaldada por un dato explícito del material (cifra, nombre, plazo, etc.); evita preguntas cuyo dato clave no aparezca en el contenido del módulo.
+- Para tipo "completar" u "opcion_multiple": la respuesta debe estar respaldada por un dato explícito del material (cifra, nombre, plazo, definición, etc.); evita preguntas cuyo dato clave no aparezca en el contenido del módulo.
 - Las preguntas deben ser objetivas y medibles, nunca de opinión.
 - Todas las preguntas deben poder responderse únicamente con la información contenida en el material proporcionado. No inventes ni asumas conocimiento externo.
 - Las preguntas no deben ser superficiales, deben tener cierto grado de complejidad.
+- PROHIBIDO generar preguntas sobre metadatos del documento: títulos exactos, encabezados repetidos, URLs, parámetros de enlaces, estructura del archivo o cantidad de veces que aparece un texto. Evalúa solo el contenido educativo (ideas, definiciones, procesos, habilidades, ejemplos).
 - Devuelve el resultado ÚNICAMENTE en formato JSON válido con la siguiente estructura:
 {
   "preguntas": [
@@ -58,6 +60,7 @@ export class QuestionsService {
     private readonly agentState: AgentStateService,
     private readonly rag: RagService,
     private readonly llm: LlmService,
+    private readonly vectorization: VectorizationService,
   ) {}
 
   /**
@@ -95,17 +98,28 @@ export class QuestionsService {
   }
 
   /**
-   * Genera el banco de preguntas del modulo usando el contenido ya vectorizado
-   * (RAG) como material. Equivale a WF_GeneradorPreguntas.
+   * Genera el banco de preguntas del modulo usando el documento completo del
+   * modulo (PDF/TXT en S3), igual que WF_GeneradorPreguntas en n8n.
    */
   async generateQuestions(courseId: string, moduleId: string): Promise<ModuleQuestion[]> {
-    const module = await this.courseModuleService.findOne(moduleId);
-    const baseQuery = module ? `${module.title}. ${module.description}` : 'contenido del modulo';
+    const doc = await this.vectorization.extractModuleDocumentText(courseId, moduleId);
+    let material = doc.text;
 
-    // Reutiliza el contenido vectorizado en Pinecone como material fuente
-    let material = await this.rag.retrieveContext(courseId, moduleId, baseQuery, 12);
-    if (!material || material.trim().length === 0) {
-      material = module ? `${module.title}\n${module.description}\n${module.content || ''}` : '';
+    if (!material && doc.source === 'none') {
+      material = await this.rag.retrieveAllModuleContext(courseId, moduleId);
+    }
+
+    if (!material || material.trim().length < 80) {
+      this.logger.warn(
+        `Material insuficiente para generar preguntas del modulo ${moduleId} (source=${doc.source}, files=${doc.files})`,
+      );
+      return [];
+    }
+
+    if (doc.source === 'fallback') {
+      this.logger.warn(
+        `Generando preguntas del modulo ${moduleId} solo con titulo/descripcion; sube un PDF y re-vectoriza.`,
+      );
     }
 
     const raw = await this.llm.runAgent({

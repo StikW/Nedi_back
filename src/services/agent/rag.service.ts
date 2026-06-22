@@ -52,7 +52,15 @@ export class RagService {
     if (t.length < 40) return false;
     if (/^es_[a-z0-9]{2,6}$/i.test(t)) return false;
     if (/^[\d.]+$/.test(t)) return false;
+    if (/^https?:\/\//i.test(t)) return false;
     return true;
+  }
+
+  private chunkIndexFromId(id: string | undefined): number {
+    if (!id) return Number.MAX_SAFE_INTEGER;
+    const suffix = id.split('-').pop();
+    const n = Number(suffix);
+    return Number.isFinite(n) ? n : Number.MAX_SAFE_INTEGER;
   }
 
   async retrieveContext(
@@ -82,6 +90,44 @@ export class RagService {
       return chunks.join('\n---\n');
     } catch (err: any) {
       this.logger.error(`Error consultando Pinecone: ${err?.message || err}`);
+      return '';
+    }
+  }
+
+  /**
+   * Recupera la mayor parte del contenido vectorizado de un modulo (ordenado por
+   * fragmento), util cuando S3 no esta disponible pero Pinecone si.
+   */
+  async retrieveAllModuleContext(
+    courseId: string,
+    moduleId: string,
+    maxChunks = 80,
+  ): Promise<string> {
+    if (!this.pinecone) {
+      this.logger.warn('Pinecone no configurado: se omite recuperacion completa');
+      return '';
+    }
+    try {
+      const neutralQuery =
+        'conceptos definiciones explicaciones ejemplos aprendizaje contenido educativo del modulo';
+      const vector = await this.embed(neutralQuery);
+      const ns = this.pinecone.index(this.indexName).namespace(courseId);
+      const result = await ns.query({
+        topK: maxChunks,
+        vector,
+        includeMetadata: true,
+        filter: { module: { $eq: moduleId } },
+      });
+
+      const chunks = (result.matches || [])
+        .slice()
+        .sort((a, b) => this.chunkIndexFromId(a.id) - this.chunkIndexFromId(b.id))
+        .map((m) => (m.metadata?.text || m.metadata?.pageContent || '') as string)
+        .filter((t) => this.isUsefulChunk(t));
+
+      return chunks.join('\n---\n');
+    } catch (err: any) {
+      this.logger.error(`Error recuperando contexto completo del modulo: ${err?.message || err}`);
       return '';
     }
   }

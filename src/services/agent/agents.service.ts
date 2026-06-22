@@ -65,18 +65,6 @@ export class AgentsService {
   async runConversacionInicial(ctx: RuntimeContext): Promise<string> {
     await this.recordWelcomeSession(ctx);
 
-    if (this.isCourseListIntent(ctx.message)) {
-      const courses = await this.getStudentCourses(ctx);
-      return courses.length === 0
-        ? NO_ACTIVE_COURSES_MESSAGE
-        : this.formatCourseList(courses);
-    }
-
-    const courses = await this.getStudentCourses(ctx);
-    if (courses.length === 0) {
-      return NO_ACTIVE_COURSES_MESSAGE;
-    }
-
     return this.llm.runAgent({
       system: CONVERSACION_INICIAL_PROMPT,
       userMessage: ctx.message,

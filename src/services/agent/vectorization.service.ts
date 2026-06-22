@@ -13,6 +13,12 @@ export interface VectorizationResult {
   message: string;
 }
 
+export interface ModuleDocumentText {
+  text: string;
+  files: number;
+  source: 's3' | 'fallback' | 'none';
+}
+
 /**
  * Ingesta del contenido del modulo en Pinecone. Migra el flujo n8n
  * `WF_Vectorizacion` (webhook /vectorizacion):
@@ -25,6 +31,8 @@ export class VectorizationService {
   private readonly logger = new Logger(VectorizationService.name);
   private static readonly CHUNK_SIZE = 2000;
   private static readonly CHUNK_OVERLAP = 200;
+  /** Limite prudente para el prompt del generador de preguntas. */
+  static readonly MAX_MATERIAL_CHARS = 120_000;
 
   constructor(
     private readonly courseModuleService: CourseModuleService,
@@ -33,25 +41,25 @@ export class VectorizationService {
   ) {}
 
   /**
-   * Vectoriza todos los archivos (PDF/TXT) subidos al modulo. Si no hay
-   * archivos, cae al texto del modulo (titulo/descripcion/contenido).
+   * Extrae el texto educativo del modulo desde los PDF/TXT en S3.
+   * Equivale al flujo de WF_GeneradorPreguntas (agregar todo el PDF, no RAG parcial).
    */
-  async ingestModule(courseId: string, moduleId: string): Promise<VectorizationResult> {
+  async extractModuleDocumentText(courseId: string, moduleId: string): Promise<ModuleDocumentText> {
     const keys = await this.uploadsService.listModuleFileKeys(courseId, moduleId);
-
     const texts: string[] = [];
     let processedFiles = 0;
 
     for (const key of keys) {
       const ext = this.extension(key);
       if (!['pdf', 'txt', 'md', 'text'].includes(ext)) {
-        this.logger.warn(`Saltando archivo no soportado para vectorizar: ${key}`);
+        this.logger.warn(`Saltando archivo no soportado para extraer texto: ${key}`);
         continue;
       }
       try {
         const buffer = await this.uploadsService.getModuleFileBuffer(key);
-        const text = ext === 'pdf' ? await this.extractPdf(buffer) : buffer.toString('utf-8');
-        if (text && text.trim()) {
+        const raw = ext === 'pdf' ? await this.extractPdf(buffer) : buffer.toString('utf-8');
+        const text = this.sanitizeEducationalText(raw);
+        if (text) {
           texts.push(text);
           processedFiles++;
         }
@@ -60,27 +68,74 @@ export class VectorizationService {
       }
     }
 
-    // Fallback: si no hubo archivos utiles, usar el texto del modulo
-    if (texts.length === 0) {
-      const module = await this.courseModuleService.findOne(moduleId);
-      const fallback = [module?.title, module?.description, module?.content].filter(Boolean).join('\n\n');
-      if (!fallback.trim()) {
-        return { success: false, files: 0, chunks: 0, message: 'No hay contenido para vectorizar' };
-      }
-      texts.push(fallback);
+    if (texts.length > 0) {
+      return {
+        text: this.truncateMaterial(texts.join('\n\n')),
+        files: processedFiles,
+        source: 's3',
+      };
     }
 
-    const fullText = texts.join('\n\n');
-    const chunks = this.splitRecursive(fullText, VectorizationService.CHUNK_SIZE, VectorizationService.CHUNK_OVERLAP);
+    const module = await this.courseModuleService.findOne(moduleId);
+    const fallback = this.sanitizeEducationalText(
+      [module?.title, module?.description].filter(Boolean).join('\n\n'),
+    );
+    if (!fallback) {
+      return { text: '', files: 0, source: 'none' };
+    }
+
+    this.logger.warn(
+      `Modulo ${moduleId} sin PDF/TXT en S3; se usa titulo/descripcion como fallback (sin URL de video).`,
+    );
+    return { text: fallback, files: 0, source: 'fallback' };
+  }
+
+  /**
+   * Vectoriza todos los archivos (PDF/TXT) subidos al modulo. Si no hay
+   * archivos, cae al titulo y descripcion (nunca la URL del video en content).
+   */
+  async ingestModule(courseId: string, moduleId: string): Promise<VectorizationResult> {
+    const { text, files, source } = await this.extractModuleDocumentText(courseId, moduleId);
+    if (!text) {
+      return { success: false, files: 0, chunks: 0, message: 'No hay contenido para vectorizar' };
+    }
+
+    if (source === 'fallback') {
+      this.logger.warn(
+        `Vectorizando modulo ${moduleId} solo con metadatos; sube un PDF para mejores preguntas.`,
+      );
+    }
+
+    await this.rag.deleteModuleVectors(courseId, moduleId);
+
+    const chunks = this.splitRecursive(text, VectorizationService.CHUNK_SIZE, VectorizationService.CHUNK_OVERLAP);
     const count = await this.rag.upsertChunks(courseId, moduleId, chunks);
 
-    this.logger.log(`Vectorizados ${count} fragmentos (${processedFiles} archivos) del modulo ${moduleId}`);
+    this.logger.log(`Vectorizados ${count} fragmentos (${files} archivos) del modulo ${moduleId}`);
     return {
       success: count > 0,
-      files: processedFiles,
+      files,
       chunks: count,
       message: count > 0 ? 'Vectorizacion completada' : 'No se generaron vectores',
     };
+  }
+
+  /** Quita URLs y ruido de formato antes de vectorizar o generar preguntas. */
+  sanitizeEducationalText(text: string): string {
+    return text
+      .replace(/\r\n/g, '\n')
+      .replace(/https?:\/\/[^\s)\]>]+/gi, ' ')
+      .replace(/[ \t]+/g, ' ')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  }
+
+  truncateMaterial(text: string): string {
+    if (text.length <= VectorizationService.MAX_MATERIAL_CHARS) return text;
+    this.logger.warn(
+      `Material del modulo truncado de ${text.length} a ${VectorizationService.MAX_MATERIAL_CHARS} caracteres`,
+    );
+    return text.slice(0, VectorizationService.MAX_MATERIAL_CHARS);
   }
 
   private extension(key: string): string {
