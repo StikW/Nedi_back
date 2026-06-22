@@ -50,6 +50,34 @@ export class UploadsService {
     return this.buildPublicBaseUrl(this.modulesBucketName);
   }
 
+  /** Extrae la key S3 (courses/.../modules/.../file) desde la URL guardada en resources. */
+  s3KeyFromResourceUrl(url: string | undefined): string | null {
+    if (!url?.trim()) return null;
+    try {
+      const parsed = new URL(url.trim());
+      const key = decodeURIComponent(parsed.pathname.replace(/^\/+/, ''));
+      if (key.startsWith('courses/') && key.includes('/modules/')) return key;
+    } catch {
+      const match = url.match(/courses\/[^?\s]+/);
+      if (match) return match[0];
+    }
+    return null;
+  }
+
+  /** Elimina objetos concretos del bucket de modulos (S3_BUCKET_MODULES). */
+  async deleteModuleFileKeys(keys: string[]): Promise<number> {
+    const validKeys = [...new Set(keys.filter((k) => k.startsWith('courses/') && k.includes('/modules/')))];
+    if (validKeys.length === 0) return 0;
+
+    await this.s3Client.send(
+      new DeleteObjectsCommand({
+        Bucket: this.modulesBucketName,
+        Delete: { Objects: validKeys.map((Key) => ({ Key })) },
+      }),
+    );
+    return validKeys.length;
+  }
+
   private buildPublicBaseUrl(bucketName: string): string {
     return `https://${bucketName}.s3.${this.awsRegion}.amazonaws.com`;
   }

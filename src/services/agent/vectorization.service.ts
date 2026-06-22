@@ -3,9 +3,9 @@ import { CourseModuleService } from '../course-module.service';
 import { UploadsService } from '../uploads.service';
 import { RagService } from './rag.service';
 import { ModuleResource } from '../../models/course-module.entity';
-// pdf-parse no expone tipos ESM; require directo evita el bloque de "debug" del paquete
+// pdf-parse v2 exporta la clase PDFParse (ya no es una funcion directa)
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const pdfParse = require('pdf-parse');
+const { PDFParse } = require('pdf-parse');
 
 export interface VectorizationResult {
   success: boolean;
@@ -18,6 +18,8 @@ export interface ModuleDocumentText {
   text: string;
   files: number;
   source: 's3' | 'fallback' | 'none';
+  /** PDFs encontrados en S3 pero no legibles (parseo fallido). */
+  extractFailed?: boolean;
 }
 
 /**
@@ -55,6 +57,7 @@ export class VectorizationService {
 
     const texts: string[] = [];
     let processedFiles = 0;
+    let extractAttempts = 0;
 
     for (const key of uniqueKeys) {
       const ext = this.extension(key);
@@ -62,6 +65,7 @@ export class VectorizationService {
         this.logger.warn(`Saltando archivo no soportado para extraer texto: ${key}`);
         continue;
       }
+      extractAttempts++;
       try {
         const buffer = await this.uploadsService.getModuleFileBuffer(key);
         const raw = ext === 'pdf' ? await this.extractPdf(buffer) : buffer.toString('utf-8');
@@ -83,6 +87,13 @@ export class VectorizationService {
       };
     }
 
+    if (extractAttempts > 0) {
+      this.logger.error(
+        `Modulo ${moduleId}: ${extractAttempts} archivo(s) en S3 pero no se pudo extraer texto`,
+      );
+      return { text: '', files: 0, source: 'none', extractFailed: true };
+    }
+
     const fallback = this.sanitizeEducationalText(
       [module?.title, module?.description].filter(Boolean).join('\n\n'),
     );
@@ -99,25 +110,9 @@ export class VectorizationService {
   /** Obtiene keys S3 a partir de las URLs guardadas en module.resources. */
   keysFromModuleResources(resources?: ModuleResource[]): string[] {
     if (!resources?.length) return [];
-    const keys: string[] = [];
-    for (const resource of resources) {
-      const key = this.s3KeyFromResourceUrl(resource.url);
-      if (key) keys.push(key);
-    }
-    return keys;
-  }
-
-  private s3KeyFromResourceUrl(url: string | undefined): string | null {
-    if (!url?.trim()) return null;
-    try {
-      const parsed = new URL(url.trim());
-      const key = decodeURIComponent(parsed.pathname.replace(/^\/+/, ''));
-      if (key.startsWith('courses/') && key.includes('/modules/')) return key;
-    } catch {
-      const match = url.match(/courses\/[^?\s]+/);
-      if (match) return match[0];
-    }
-    return null;
+    return resources
+      .map((resource) => this.uploadsService.s3KeyFromResourceUrl(resource.url))
+      .filter((key): key is string => !!key);
   }
 
   /**
@@ -174,8 +169,13 @@ export class VectorizationService {
   }
 
   private async extractPdf(buffer: Buffer): Promise<string> {
-    const data = await pdfParse(buffer);
-    return data?.text || '';
+    const parser = new PDFParse({ data: buffer });
+    try {
+      const result = await parser.getText();
+      return result?.text || '';
+    } finally {
+      await parser.destroy();
+    }
   }
 
   /**

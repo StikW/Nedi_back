@@ -44,6 +44,8 @@ export type GenerateQuestionsResult = {
   questions: ModuleQuestion[];
   /** true cuando no hay PDF/TXT del modulo en S3 ni en recursos registrados */
   noDocument?: boolean;
+  /** true cuando hay PDF en S3 pero fallo la extraccion de texto */
+  extractFailed?: boolean;
 };
 
 export type CurrentQuestionState =
@@ -119,7 +121,7 @@ export class QuestionsService {
       this.logger.warn(
         `Material insuficiente para generar preguntas del modulo ${moduleId} (source=${doc.source}, files=${doc.files})`,
       );
-      return { questions: [], noDocument: doc.files === 0 && doc.source !== 's3' };
+      return { questions: [], noDocument: doc.files === 0 && doc.source !== 's3', extractFailed: doc.extractFailed };
     }
 
     if (doc.source === 'fallback') {

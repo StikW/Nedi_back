@@ -1,5 +1,5 @@
 import { Inject, Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import { CourseModule, COURSE_MODULES_TABLE, ModuleStatus } from '../models/course-module.entity';
+import { CourseModule, COURSE_MODULES_TABLE, ModuleStatus, ModuleResource } from '../models/course-module.entity';
 import { CreateCourseModuleDto, UpdateCourseModuleDto } from '../models/course-module.dto';
 import { DynamoDBDocumentClient, GetCommand, PutCommand, QueryCommand, DeleteCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { ModuleProgressService } from './module-progress.service';
@@ -185,8 +185,61 @@ export class CourseModuleService {
       ReturnValues: 'ALL_NEW'
     }));
 
+    if (updateModuleDto.resources !== undefined) {
+      await this.syncRemovedModuleResources(
+        courseId,
+        id,
+        existingModule.resources,
+        updateModuleDto.resources,
+      );
+    }
+
     // Return updated module
     return this.findOne(id);
+  }
+
+  /**
+   * Al actualizar resources, elimina de S3 los PDFs que ya no estan en la lista
+   * y limpia vectores Pinecone para re-vectorizar con el material nuevo.
+   */
+  private async syncRemovedModuleResources(
+    courseId: string,
+    moduleId: string,
+    previousResources: ModuleResource[] | undefined,
+    nextResources: ModuleResource[],
+  ): Promise<void> {
+    const previousKeys = this.resourceKeysFromUrls(previousResources);
+    const nextKeys = new Set(this.resourceKeysFromUrls(nextResources));
+    const removedKeys = previousKeys.filter((key) => !nextKeys.has(key));
+
+    if (removedKeys.length === 0) return;
+
+    try {
+      const deleted = await this.uploadsService.deleteModuleFileKeys(removedKeys);
+      console.log(
+        `Modulo ${moduleId}: eliminados ${deleted} archivo(s) obsoleto(s) de S3`,
+      );
+    } catch (error: any) {
+      console.warn(
+        `Warning: no se pudieron eliminar archivos S3 del modulo ${moduleId}:`,
+        error?.message || error,
+      );
+    }
+
+    try {
+      await this.ragService.deleteModuleVectors(courseId, moduleId);
+    } catch (error: any) {
+      console.warn(
+        `Warning: no se pudieron limpiar vectores Pinecone del modulo ${moduleId}:`,
+        error?.message || error,
+      );
+    }
+  }
+
+  private resourceKeysFromUrls(resources?: ModuleResource[]): string[] {
+    return (resources || [])
+      .map((resource) => this.uploadsService.s3KeyFromResourceUrl(resource.url))
+      .filter((key): key is string => !!key);
   }
 
   /**

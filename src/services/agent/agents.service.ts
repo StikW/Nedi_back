@@ -241,11 +241,17 @@ export class AgentsService {
     // Obtener o generar banco de preguntas
     let current = await this.questions.getCurrentQuestion(courseId, moduleId, ctx.phoneNumber);
     if (current.state === 'empty') {
-      const { questions: generated, noDocument } = await this.questions.generateQuestions(
+      const { questions: generated, noDocument, extractFailed } = await this.questions.generateQuestions(
         courseId,
         moduleId,
       );
       if (generated.length === 0) {
+        if (extractFailed) {
+          return (
+            'Encontré el documento del módulo pero no pude leerlo. ' +
+            'Pide a tu instructor que vuelva a subir el PDF desde el panel e intenta de nuevo.'
+          );
+        }
         if (noDocument) {
           return (
             'Este módulo aún no tiene un documento PDF cargado, así que no puedo generar preguntas. ' +
