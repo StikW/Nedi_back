@@ -41,6 +41,11 @@ export interface AgentState {
    */
   awaitingModuleStartConfirmation?: boolean;
   /**
+   * Tras guardar un curso, el agente pregunta si quiere empezar las preguntas.
+   * Evita que "si" vuelva al agente de conversacion en bucle.
+   */
+  awaitingCourseStartConfirmation?: boolean;
+  /**
    * True tras el mensaje de bienvenida (conversacion inicial). Evita que otros
    * agentes vuelvan a presentarse como Nedi en la misma sesion activa.
    */

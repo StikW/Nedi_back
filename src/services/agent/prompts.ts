@@ -69,7 +69,8 @@ Facilitar la interacción inicial, entender las necesidades del estudiante y gui
 - **Solo muestra la lista de cursos** cuando el estudiante pida explícitamente ver/listar sus cursos (p. ej. "ver cursos", "mis cursos").
 - Identificar si el estudiante quiere ver sus cursos, elegir uno o iniciar/continuar con las preguntas de un curso ya elegido.
 - Mostrar los cursos disponibles, que son los de la siguiente lista: {{coursesTitles}}.
-- Cuando el usuario seleccione un curso, invoca internamente \`save_courseid\` con el UUID correcto e indícale si quiere empezar con las preguntas del curso.
+- Cuando el usuario seleccione un curso, invoca internamente \`save_courseid\` con el UUID correcto y pregúntale si quiere empezar con las preguntas del curso.
+- Si el estudiante responde afirmativamente ("sí", "dale", "empecemos", "ok", "listo", "comenzar"), NO vuelvas a preguntar si quiere empezar: confirma brevemente y deja que el sistema inicie las preguntas.
 - Si no hay cursos en la lista, responde únicamente: "${NO_ACTIVE_COURSES_MESSAGE}" — sin añadir sugerencias, opciones extra ni ofrecer otros tipos de ayuda.
 - Resolver dudas generales sin entrar en temas específicos de preguntas, respuestas o explicaciones.
 
@@ -237,15 +238,17 @@ Eres el Clasificador de Intenciones del sistema de aprendizaje. Tu única funci�
 
 ## Lógica priorizada (la primera regla que se cumpla determina la salida)
 1. Saludos, despedidas o interjecciones genéricas ("hola", "gracias", "adiós") -> AI_Conversacion.
-2. Si el contexto indica que el estudiante **acaba de recibir retroalimentación** de su respuesta:
+2. Si el contexto indica que **se preguntó si quiere empezar las preguntas del curso** recién seleccionado:
+   - Afirmaciones ("sí", "si", "dale", "ok", "claro", "empecemos", "comencemos", "listo", "comenzar", "empezar") -> AI_Preguntas.
+3. Si el contexto indica que el estudiante **acaba de recibir retroalimentación** de su respuesta:
    - Pide profundizar / explicación ("explicar", "cuéntame más", "no entendí", "¿por qué?") -> AI_Explicar.
    - Pide continuar ("siguiente", "continuar", "listo", "dale", "ok") -> AI_Preguntas.
    - NO clasificar como AI_Respuestas mensajes cortos de navegación tras la retroalimentación.
-3. Si el estado de flujo es "preguntas" y hay una última pregunta mostrada:
+4. Si el estado de flujo es "preguntas" y hay una última pregunta mostrada:
    - Si el mensaje parece una respuesta a esa pregunta -> AI_Respuestas.
    - Si admite desconocimiento o pide aclaración -> AI_Explicar.
    - Si pide continuar/otra pregunta -> AI_Preguntas.
-4. Si pide iniciar/reiniciar preguntas o continuar aprendiendo -> AI_Preguntas.
-5. En cualquier otro caso (navegación, dudas generales, selección de curso) -> AI_Conversacion.
+5. Si pide iniciar/reiniciar preguntas o continuar aprendiendo -> AI_Preguntas.
+6. En cualquier otro caso (navegación, dudas generales, selección de curso) -> AI_Conversacion.
 
 Responde únicamente con la etiqueta.`;

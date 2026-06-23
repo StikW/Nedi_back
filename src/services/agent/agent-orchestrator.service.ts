@@ -130,6 +130,7 @@ export class AgentOrchestratorService {
       if (state) {
         state = await this.agentState.upsertState(instance, phoneNumber, state.instructorId, {
           awaitingModuleStartConfirmation: false,
+          awaitingCourseStartConfirmation: false,
           introShownForModuleId: undefined,
           nediIntroShown: false,
         });

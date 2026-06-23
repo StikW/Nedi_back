@@ -104,7 +104,23 @@ export class AgentsService {
   }
 
   async classify(ctx: RuntimeContext): Promise<IntentRoute> {
-    if (ctx.state.offeredNextModuleId && this.wantsToContinueNextModule(ctx.message)) {
+    if (ctx.state.offeredNextModuleId && this.wantsToStartModuleQuestions(ctx.message)) {
+      return 'AI_Preguntas';
+    }
+
+    if (ctx.state.awaitingCourseStartConfirmation && this.wantsToStartModuleQuestions(ctx.message)) {
+      return 'AI_Preguntas';
+    }
+
+    if (
+      ctx.state.courseId &&
+      !ctx.state.moduleId &&
+      ctx.state.flujo !== 'preguntas' &&
+      !ctx.state.lastQuestion &&
+      !ctx.state.awaitingPostAnswerAction &&
+      this.wantsToStartModuleQuestions(ctx.message) &&
+      this.lastAssistantAskedToStartQuestions(ctx.history)
+    ) {
       return 'AI_Preguntas';
     }
 
@@ -123,7 +139,10 @@ export class AgentsService {
         ? 'El estudiante acaba de recibir retroalimentación de su respuesta y debe elegir si quiere más explicación o la siguiente pregunta. No trates su mensaje como una nueva respuesta a la pregunta anterior.'
         : '',
       ctx.state.awaitingModuleStartConfirmation
-        ? 'Ya se envió el video intro del módulo. El estudiante debe confirmar (listo/comenzar/empezar) para recibir la primera pregunta.'
+        ? 'Ya se envió el video intro del módulo. El estudiante debe confirmar (sí/listo/comenzar/empezar) para recibir la primera pregunta.'
+        : '',
+      ctx.state.awaitingCourseStartConfirmation
+        ? 'Se acaba de seleccionar un curso y se preguntó si quiere empezar con las preguntas. Afirmaciones como "sí", "dale" o "empecemos" deben ir a AI_Preguntas.'
         : '',
       ctx.state.lastQuestion ? `Última pregunta mostrada: ${ctx.state.lastQuestion}` : 'No hay pregunta activa.',
       ctx.state.offeredNextModuleId
@@ -202,7 +221,12 @@ export class AgentsService {
             ctx.tenant.evolution.instance,
             ctx.phoneNumber,
             ctx.tenant.instructor.id,
-            { courseId, flujo: 'conversacion', moduleId: undefined },
+            {
+              courseId,
+              flujo: 'conversacion',
+              moduleId: undefined,
+              awaitingCourseStartConfirmation: true,
+            },
           );
           return `Curso "${valid.title}" guardado correctamente.`;
         },
@@ -246,6 +270,7 @@ export class AgentsService {
         moduleId,
         offeredNextModuleId: undefined,
         awaitingPostAnswerAction: false,
+        awaitingCourseStartConfirmation: false,
       },
     );
 
@@ -294,6 +319,7 @@ export class AgentsService {
           introShownForModuleId: undefined,
           awaitingPostAnswerAction: false,
           awaitingModuleStartConfirmation: false,
+          awaitingCourseStartConfirmation: false,
         },
       );
       return reply;
@@ -312,42 +338,54 @@ export class AgentsService {
       );
     }
 
-    // En la pregunta 1 (índice 0): video + confirmación cada vez que retoma ahí.
-    // Solo tras confirmar (listo/comenzar) se envía audio-resumen y la pregunta.
+    // En la pregunta 1 (índice 0): video intro opcional + confirmación si hace falta.
     if (current.index === 0) {
       const confirmingStart = this.wantsToStartModuleQuestions(ctx.message);
+      const awaitingIntro = ctx.state.awaitingModuleStartConfirmation;
 
-      if (ctx.state.awaitingModuleStartConfirmation && confirmingStart) {
+      if (awaitingIntro && !confirmingStart) {
+        return (
+          'Cuando estés listo para la primera pregunta, escribe *sí*, *listo*, *comenzar* o *empezar*.'
+        );
+      }
+
+      if (awaitingIntro && confirmingStart) {
         ctx.state = await this.agentState.upsertState(
           ctx.tenant.evolution.instance,
           ctx.phoneNumber,
           ctx.tenant.instructor.id,
           { awaitingModuleStartConfirmation: false },
         );
-      } else {
+      } else if (!awaitingIntro) {
         const moduleForIntro = activeModule || (await this.courseModuleService.findOne(moduleId));
         const introSent = await this.sendModuleIntro(ctx, moduleForIntro);
 
-        ctx.state = await this.agentState.upsertState(
-          ctx.tenant.evolution.instance,
-          ctx.phoneNumber,
-          ctx.tenant.instructor.id,
-          { awaitingModuleStartConfirmation: true },
-        );
-
-        if (introSent) {
+        if (introSent && !confirmingStart) {
+          ctx.state = await this.agentState.upsertState(
+            ctx.tenant.evolution.instance,
+            ctx.phoneNumber,
+            ctx.tenant.instructor.id,
+            { awaitingModuleStartConfirmation: true },
+          );
           return (
             'Perfecto. Revisa el video con calma. Cuando quieras empezar con las preguntas, ' +
-            'escribe *listo*, *comenzar* o *empezar*.'
+            'escribe *sí*, *listo*, *comenzar* o *empezar*.'
           );
         }
 
-        if (!confirmingStart) {
+        if (!introSent && !confirmingStart) {
+          ctx.state = await this.agentState.upsertState(
+            ctx.tenant.evolution.instance,
+            ctx.phoneNumber,
+            ctx.tenant.instructor.id,
+            { awaitingModuleStartConfirmation: true },
+          );
           return (
-            'Cuando estés listo para la primera pregunta, escribe *listo*, *comenzar* o *empezar*.'
+            'Cuando estés listo para la primera pregunta, escribe *sí*, *listo*, *comenzar* o *empezar*.'
           );
         }
 
+        // El estudiante ya confirmó (p. ej. "sí"): continuar sin pedir otra confirmación.
         ctx.state = await this.agentState.upsertState(
           ctx.tenant.evolution.instance,
           ctx.phoneNumber,
@@ -830,19 +868,26 @@ export class AgentsService {
     );
   }
 
-  /** Afirmaciones tras ofrecer el siguiente módulo (evita depender solo del LLM clasificador). */
   private wantsToStartModuleQuestions(message: string): boolean {
     const t = message.trim().toLowerCase().normalize('NFD').replace(/\p{M}/gu, '');
-    if (/^(si|sí|ok|dale|claro|listo|ya|vamos|adelante|empecemos|comencemos|yes|yep)$/.test(t)) {
+    if (/^(si|sí|ok|dale|claro|listo|ya|vamos|adelante|empecemos|comencemos|yes|yep|bueno|perfecto|de acuerdo|esta bien|está bien)$/.test(t)) {
       return true;
     }
-    return /\b(listo|comenzar|comencemos|empezar|empecemos|iniciar|quiero empezar|empezar preguntas|primera pregunta|vamos)\b/.test(
+    return /\b(listo|comenzar|comencemos|empezar|empecemos|iniciar|quiero empezar|empezar preguntas|primera pregunta|vamos|arrancar|arranquemos)\b/.test(
       t,
     );
   }
 
-  private wantsToContinueNextModule(message: string): boolean {
-    return this.wantsToStartModuleQuestions(message);
+  /** Respaldo para sesiones sin awaitingCourseStartConfirmation persistido. */
+  private lastAssistantAskedToStartQuestions(history: ChatTurn[]): boolean {
+    for (let i = history.length - 1; i >= 0; i--) {
+      if (history[i].role !== 'assistant') continue;
+      const text = history[i].content.toLowerCase().normalize('NFD').replace(/\p{M}/gu, '');
+      return /\b(empezar|comenzar|iniciar)\b.*\bpreguntas\b|\bpreguntas\b.*\b(curso|modulo|módulo)\b/.test(
+        text,
+      );
+    }
+    return false;
   }
 
   private formatQuestion(question: ModuleQuestion, index: number, total: number): string {
