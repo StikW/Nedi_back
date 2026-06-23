@@ -338,59 +338,44 @@ export class AgentsService {
       );
     }
 
-    // En la pregunta 1 (índice 0): video intro opcional + confirmación si hace falta.
+    // En la pregunta 1 (índice 0): primero video intro (si hay), luego confirmación, después pregunta 1.
     if (current.index === 0) {
       const confirmingStart = this.wantsToStartModuleQuestions(ctx.message);
-      const awaitingIntro = ctx.state.awaitingModuleStartConfirmation;
 
-      if (awaitingIntro && !confirmingStart) {
-        return (
-          'Cuando estés listo para la primera pregunta, escribe *sí*, *listo*, *comenzar* o *empezar*.'
-        );
-      }
+      if (ctx.state.awaitingModuleStartConfirmation) {
+        if (!confirmingStart) {
+          return (
+            'Cuando termines de ver el video, escribe *sí*, *listo*, *comenzar* o *empezar* ' +
+            'y te envío la primera pregunta.'
+          );
+        }
 
-      if (awaitingIntro && confirmingStart) {
         ctx.state = await this.agentState.upsertState(
           ctx.tenant.evolution.instance,
           ctx.phoneNumber,
           ctx.tenant.instructor.id,
           { awaitingModuleStartConfirmation: false },
         );
-      } else if (!awaitingIntro) {
+      } else {
         const moduleForIntro = activeModule || (await this.courseModuleService.findOne(moduleId));
         const introSent = await this.sendModuleIntro(ctx, moduleForIntro);
 
-        if (introSent && !confirmingStart) {
-          ctx.state = await this.agentState.upsertState(
-            ctx.tenant.evolution.instance,
-            ctx.phoneNumber,
-            ctx.tenant.instructor.id,
-            { awaitingModuleStartConfirmation: true },
-          );
-          return (
-            'Perfecto. Revisa el video con calma. Cuando quieras empezar con las preguntas, ' +
-            'escribe *sí*, *listo*, *comenzar* o *empezar*.'
-          );
-        }
-
-        if (!introSent && !confirmingStart) {
-          ctx.state = await this.agentState.upsertState(
-            ctx.tenant.evolution.instance,
-            ctx.phoneNumber,
-            ctx.tenant.instructor.id,
-            { awaitingModuleStartConfirmation: true },
-          );
-          return (
-            'Cuando estés listo para la primera pregunta, escribe *sí*, *listo*, *comenzar* o *empezar*.'
-          );
-        }
-
-        // El estudiante ya confirmó (p. ej. "sí"): continuar sin pedir otra confirmación.
         ctx.state = await this.agentState.upsertState(
           ctx.tenant.evolution.instance,
           ctx.phoneNumber,
           ctx.tenant.instructor.id,
-          { awaitingModuleStartConfirmation: false },
+          { awaitingModuleStartConfirmation: true },
+        );
+
+        if (introSent) {
+          return (
+            'Revisa el video con calma. Cuando lo hayas visto, escribe *sí*, *listo*, *comenzar* o *empezar* ' +
+            'y te envío la primera pregunta.'
+          );
+        }
+
+        return (
+          'Cuando estés listo para la primera pregunta, escribe *sí*, *listo*, *comenzar* o *empezar*.'
         );
       }
     }
