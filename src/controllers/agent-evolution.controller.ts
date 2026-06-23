@@ -30,6 +30,12 @@ export class AgentEvolutionController {
     return this.evolutionAdmin.status(req.user);
   }
 
+  /** Diagnóstico: comprueba si el backend puede contactar Evolution. */
+  @Get('health')
+  async health() {
+    return this.evolutionAdmin.checkHealth();
+  }
+
   /** Desvincula el numero (logout de la instancia). */
   @Post('logout')
   async logout(@Request() req: RequestWithUser) {

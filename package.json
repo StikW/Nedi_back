@@ -20,7 +20,8 @@
     "reset:agent-progress": "node scripts/reset-agent-progress.js",
     "reset:agent-progress:confirm": "node scripts/reset-agent-progress.js --confirm",
     "smoke:course-e2e": "node scripts/smoke-course-e2e.js",
-    "smoke:course-e2e:run": "node scripts/smoke-course-e2e.js --confirm"
+    "smoke:course-e2e:run": "node scripts/smoke-course-e2e.js --confirm",
+    "check:evolution": "node scripts/check-evolution.mjs"
   },
   "overrides": {
     "multer": "$multer",
