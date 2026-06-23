@@ -60,12 +60,6 @@ export class UsersService {
         : undefined,
       createdAt: now,
       updatedAt: now,
-      // Campos específicos para instructores
-      clientIdApp: registerDto.clientIdApp,
-      clientSecretApp: registerDto.clientSecretApp,
-      accessToken: registerDto.accessToken,
-      businessAccountId: registerDto.businessAccountId,
-      apiKey: registerDto.apiKey,
     };
 
     await this.dynamoClient.send(

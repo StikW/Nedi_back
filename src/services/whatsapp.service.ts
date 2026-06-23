@@ -1,5 +1,5 @@
 import { Injectable, Logger, HttpException, HttpStatus } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { NotificationConfigService } from './notification-config.service';
 
 /**
  * Tipos de plantilla soportados por el sistema de recordatorios.
@@ -29,67 +29,36 @@ export interface WhatsAppSendResult {
   statusCode?: number;
 }
 
-/** Configuración resuelta para una plantilla específica. */
-interface ResolvedTemplateConfig {
-  name: string;
-  language: string;
-}
-
 /**
  * Servicio que envía mensajes por la API oficial de WhatsApp Cloud (Meta Graph API).
- *
- * Variables de entorno requeridas:
- *  - WHATSAPP_PHONE_NUMBER_ID    => ID del número emisor configurado en Meta Business
- *  - WHATSAPP_ACCESS_TOKEN       => Token (preferentemente permanente de System User)
- *  - WHATSAPP_API_VERSION        => (opcional) Versión de la Graph API. Por defecto v21.0
- *
- * Plantillas (una por tipo):
- *  - WHATSAPP_WELCOME_TEMPLATE_NAME / WHATSAPP_WELCOME_TEMPLATE_LANGUAGE
- *  - WHATSAPP_DAILY_TEMPLATE_NAME   / WHATSAPP_DAILY_TEMPLATE_LANGUAGE
- *  - WHATSAPP_WEEKLY_TEMPLATE_NAME  / WHATSAPP_WEEKLY_TEMPLATE_LANGUAGE
- *
- * Legacy: si una de las variables específicas no está definida, se cae a
- * `WHATSAPP_TEMPLATE_NAME` y `WHATSAPP_TEMPLATE_LANGUAGE` para no romper
- * configuraciones previas.
+ * Lee credenciales y plantillas desde DynamoDB (panel admin) con fallback a `.env`.
  */
 @Injectable()
 export class WhatsAppService {
   private readonly logger = new Logger(WhatsAppService.name);
 
-  constructor(private readonly configService: ConfigService) {}
-
-  /** Lee variable directa de process.env o fallback del namespace `env.*` de Nest. */
-  private getEnv(key: string, namespacedKey: string): string | undefined {
-    return this.configService.get<string>(key) ?? this.configService.get<string>(namespacedKey);
-  }
+  constructor(private readonly notificationConfigService: NotificationConfigService) {}
 
   /**
    * Envía un template aprobado en Meta a un número específico.
-   *
-   * @param toPhoneNumber Número destino (en cualquier formato; se normaliza internamente).
-   * @param type Tipo de plantilla a usar (welcome | daily | weekly).
-   * @param params Parámetros para los placeholders del body.
    */
   async sendTemplateMessage(
     toPhoneNumber: string,
     type: WhatsAppTemplateType,
     params: WhatsAppTemplateParams,
   ): Promise<WhatsAppSendResult> {
-    const phoneNumberId = this.getEnv('WHATSAPP_PHONE_NUMBER_ID', 'env.whatsappPhoneNumberId');
-    const accessToken = this.getEnv('WHATSAPP_ACCESS_TOKEN', 'env.whatsappAccessToken');
-    const apiVersion = this.getEnv('WHATSAPP_API_VERSION', 'env.whatsappApiVersion') || 'v21.0';
-    const template = this.resolveTemplateConfig(type);
+    const cfg = await this.notificationConfigService.getEffectiveConfig();
+    const template = this.notificationConfigService.resolveTemplate(type, cfg);
 
-    if (!phoneNumberId || !accessToken || !template.name) {
+    if (!cfg.whatsappPhoneNumberId || !cfg.whatsappAccessToken || !template.name) {
       throw new HttpException(
-        `WhatsApp no est\u00e1 configurado para el tipo "${type}": faltan credenciales o el nombre del template (revisa WHATSAPP_${type.toUpperCase()}_TEMPLATE_NAME en .env)`,
+        `WhatsApp no está configurado para el tipo "${type}": faltan credenciales o el nombre del template`,
         HttpStatus.SERVICE_UNAVAILABLE,
       );
     }
 
     const normalizedTo = this.normalizePhoneForMeta(toPhoneNumber);
-
-    const url = `https://graph.facebook.com/${apiVersion}/${phoneNumberId}/messages`;
+    const url = `https://graph.facebook.com/${cfg.whatsappApiVersion}/${cfg.whatsappPhoneNumberId}/messages`;
     const body = {
       messaging_product: 'whatsapp',
       to: normalizedTo,
@@ -117,7 +86,7 @@ export class WhatsAppService {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
+          Authorization: `Bearer ${cfg.whatsappAccessToken}`,
         },
         body: JSON.stringify(body),
       });
@@ -128,7 +97,7 @@ export class WhatsAppService {
         const errorMessage =
           json?.error?.message || json?.error?.error_user_msg || `HTTP ${response.status}`;
         this.logger.error(
-          `WhatsApp env\u00edo fall\u00f3 type=${type} template=${template.name} to=${normalizedTo} status=${response.status} msg=${errorMessage}`,
+          `WhatsApp envío falló type=${type} template=${template.name} to=${normalizedTo} status=${response.status} msg=${errorMessage}`,
         );
         return {
           success: false,
@@ -159,68 +128,15 @@ export class WhatsAppService {
   }
 
   /**
-   * Devuelve los tokens configurados para construir el body de un tipo de plantilla.
-   * Tokens soportados (resueltos por ReminderService):
-   *   - name, course, days, phone, pending, total, completed, instructor_phone
-   *
-   * Variables le\u00edas (en orden):
-   *   - WHATSAPP_${TYPE}_TEMPLATE_BODY_PARAMS  (espec\u00edfica del tipo)
-   *   - WHATSAPP_TEMPLATE_BODY_PARAMS          (legacy, fallback global)
-   *
-   * Si no hay nada configurado, retorna [] (template fijo, sin placeholders).
+   * Tokens configurados para construir el body de un tipo de plantilla.
+   * Tokens soportados: name, course, days, phone, pending, total, completed, instructor_phone
    */
-  getBodyParamTokens(type: WhatsAppTemplateType): string[] {
-    const upper = type.toUpperCase();
-    const bodyParamsNs: Record<WhatsAppTemplateType, string> = {
-      welcome: 'env.whatsappWelcomeTemplateBodyParams',
-      daily: 'env.whatsappDailyTemplateBodyParams',
-      weekly: 'env.whatsappWeeklyTemplateBodyParams',
-    };
-    const specific = this.getEnv(
-      `WHATSAPP_${upper}_TEMPLATE_BODY_PARAMS`,
-      bodyParamsNs[type],
-    );
-    const legacy = this.getEnv('WHATSAPP_TEMPLATE_BODY_PARAMS', 'env.whatsappTemplateBodyParams');
-    const raw = specific !== undefined ? specific : legacy;
-    if (raw === undefined) {
-      return type === 'daily' ? ['name', 'course', 'days'] : [];
-    }
-    return raw
-      .split(',')
-      .map((t) => t.trim().toLowerCase())
-      .filter((t) => t.length > 0);
+  async getBodyParamTokens(type: WhatsAppTemplateType): Promise<string[]> {
+    const cfg = await this.notificationConfigService.getEffectiveConfig();
+    const template = this.notificationConfigService.resolveTemplate(type, cfg);
+    return this.notificationConfigService.parseBodyParamTokens(template.bodyParamsRaw, type);
   }
 
-  /**
-   * Resuelve nombre+idioma del template para un tipo dado, con fallback al
-   * par legacy `WHATSAPP_TEMPLATE_NAME` / `WHATSAPP_TEMPLATE_LANGUAGE`.
-   */
-  private resolveTemplateConfig(type: WhatsAppTemplateType): ResolvedTemplateConfig {
-    const upper = type.toUpperCase();
-    const templateNameNs: Record<WhatsAppTemplateType, string> = {
-      welcome: 'env.whatsappWelcomeTemplateName',
-      daily: 'env.whatsappDailyTemplateName',
-      weekly: 'env.whatsappWeeklyTemplateName',
-    };
-    const templateLanguageNs: Record<WhatsAppTemplateType, string> = {
-      welcome: 'env.whatsappWelcomeTemplateLanguage',
-      daily: 'env.whatsappDailyTemplateLanguage',
-      weekly: 'env.whatsappWeeklyTemplateLanguage',
-    };
-    const name =
-      this.getEnv(`WHATSAPP_${upper}_TEMPLATE_NAME`, templateNameNs[type]) ||
-      this.getEnv('WHATSAPP_TEMPLATE_NAME', 'env.whatsappTemplateName') ||
-      '';
-    const language =
-      this.getEnv(`WHATSAPP_${upper}_TEMPLATE_LANGUAGE`, templateLanguageNs[type]) ||
-      this.getEnv('WHATSAPP_TEMPLATE_LANGUAGE', 'env.whatsappTemplateLanguage') ||
-      'es_CO';
-    return { name, language };
-  }
-
-  /**
-   * Meta requiere el número en formato E.164 sin el "+", solo dígitos (ej. "5215512345678").
-   */
   private normalizePhoneForMeta(phoneNumber: string): string {
     return (phoneNumber || '').replace(/\D/g, '');
   }

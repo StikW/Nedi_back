@@ -1,4 +1,4 @@
-import { IsEmail, IsNotEmpty, IsString, MinLength, IsEnum, IsOptional, ValidateIf, Matches, IsBoolean } from 'class-validator';
+import { IsEmail, IsNotEmpty, IsString, MinLength, IsEnum, IsOptional, Matches, IsBoolean } from 'class-validator';
 import { UserRole } from './user.entity';
 
 /**
@@ -22,14 +22,14 @@ export class RegisterDto {
   @IsOptional()
   public role?: UserRole;
 
-  /** Account active status (Meta users and others). Defaults to true. */
+  /** Account active status. Defaults to true. */
   @IsBoolean()
   @IsOptional()
   public isActive?: boolean;
 
   /**
    * Tel\u00e9fono del instructor en formato E.164 (con o sin "+").
-   * Se usa como n\u00famero del tutor en la plantilla de bienvenida de WhatsApp.
+   * Se sincroniza desde Evolution al conectar WhatsApp del agente Nedi.
    */
   @IsString()
   @IsOptional()
@@ -37,32 +37,6 @@ export class RegisterDto {
     message: 'phoneNumber debe estar en formato E.164 (ej: +573001234567)',
   })
   public phoneNumber?: string;
-
-  // Campos específicos para instructores (WhatsApp credentials)
-  @ValidateIf(o => o.role === UserRole.INSTRUCTOR)
-  @IsString()
-  @IsNotEmpty()
-  public clientIdApp?: string;
-
-  @ValidateIf(o => o.role === UserRole.INSTRUCTOR)
-  @IsString()
-  @IsNotEmpty()
-  public clientSecretApp?: string;
-
-  @ValidateIf(o => o.role === UserRole.INSTRUCTOR)
-  @IsString()
-  @IsNotEmpty()
-  public accessToken?: string;
-
-  @ValidateIf(o => o.role === UserRole.INSTRUCTOR)
-  @IsString()
-  @IsNotEmpty()
-  public businessAccountId?: string;
-
-  @ValidateIf(o => o.role === UserRole.INSTRUCTOR)
-  @IsString()
-  @IsNotEmpty()
-  public apiKey?: string;
 }
 
 /**

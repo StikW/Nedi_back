@@ -13,7 +13,6 @@ import { ModuleProgressModule } from './modules/module-progress.module';
 import { PublicConfigModule } from './modules/public-config.module';
 import { RemindersModule } from './modules/reminders.module';
 import { AgentModule } from './modules/agent.module';
-import { MetaModule } from './modules/meta.module';
 import envConfig from './core/config/env.config';
 
 @Module({
@@ -37,7 +36,6 @@ import envConfig from './core/config/env.config';
     ModuleProgressModule,
     RemindersModule,
     AgentModule,
-    MetaModule,
   ],
 })
 export class AppModule {}

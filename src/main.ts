@@ -1,13 +1,14 @@
 import { NestFactory } from '@nestjs/core';
-import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
+import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
-  
+  const app = await NestFactory.create(AppModule, {
+    logger: ['error', 'warn'],
+  });
+
   app.useGlobalPipes(new ValidationPipe());
-  
-  // CORS: localhost + tututor.co y www.tututor.co (http/https)
+
   const localOrigins = new Set([
     'http://localhost:3000',
     'http://localhost:3001',
@@ -46,13 +47,13 @@ async function bootstrap() {
       'Cache-Control',
       'Pragma',
     ],
-    credentials: true, // Permite cookies y headers de autenticación
+    credentials: true,
     preflightContinue: false,
     optionsSuccessStatus: 204,
   });
-  
+
   const port = 3000;
   await app.listen(port);
-  console.log(`Application is running on: http://localhost:${port}`);
+  console.log(`API http://localhost:${port}`);
 }
-bootstrap(); 
+bootstrap();

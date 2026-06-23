@@ -5,12 +5,10 @@ import { PassportModule } from '@nestjs/passport';
 import { passportConfig } from '../core/config/auth.config';
 import { JwtStrategy } from '../strategies/jwt.strategy';
 import { UsersModule } from './users.module';
-import { TokenBlacklistService } from '../services/token-blacklist.service';
 
 @Module({
   imports: [
     PassportModule.register(passportConfig),
-    // registerAsync: el secreto se lee tras cargar .env; register() leía env antes de ConfigModule y rompía la firma vs JwtStrategy
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -23,7 +21,7 @@ import { TokenBlacklistService } from '../services/token-blacklist.service';
     }),
     forwardRef(() => UsersModule),
   ],
-  providers: [JwtStrategy, TokenBlacklistService],
-  exports: [PassportModule, JwtModule, TokenBlacklistService],
+  providers: [JwtStrategy],
+  exports: [PassportModule, JwtModule],
 })
-export class AuthModule {} 
+export class AuthModule {}

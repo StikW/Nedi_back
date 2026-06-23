@@ -14,41 +14,10 @@ export default registerAs('env', () => ({
   jwtSecret: process.env.JWT_SECRET,
   jwtExpiresIn: process.env.JWT_EXPIRES_IN,
 
-  // WhatsApp Cloud API (Meta) - credenciales globales
-  whatsappApiVersion: process.env.WHATSAPP_API_VERSION,
-  whatsappPhoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID,
-  whatsappAccessToken: process.env.WHATSAPP_ACCESS_TOKEN,
+  // WhatsApp / recordatorios: configuración solo desde panel admin (DynamoDB NotificationConfig).
+  // REMINDER_INTERNAL_API_KEY se mantiene para proteger POST /reminders/run/* vía cron externo.
 
-  // WhatsApp - plantillas (legacy: si una espec\u00edfica falta, se usa esta)
-  whatsappTemplateName: process.env.WHATSAPP_TEMPLATE_NAME,
-  whatsappTemplateLanguage: process.env.WHATSAPP_TEMPLATE_LANGUAGE,
-  whatsappTemplateBodyParams: process.env.WHATSAPP_TEMPLATE_BODY_PARAMS,
-
-  // WhatsApp - plantillas espec\u00edficas
-  whatsappWelcomeTemplateName: process.env.WHATSAPP_WELCOME_TEMPLATE_NAME,
-  whatsappWelcomeTemplateLanguage: process.env.WHATSAPP_WELCOME_TEMPLATE_LANGUAGE,
-  whatsappWelcomeTemplateBodyParams: process.env.WHATSAPP_WELCOME_TEMPLATE_BODY_PARAMS,
-  whatsappDailyTemplateName: process.env.WHATSAPP_DAILY_TEMPLATE_NAME,
-  whatsappDailyTemplateLanguage: process.env.WHATSAPP_DAILY_TEMPLATE_LANGUAGE,
-  whatsappDailyTemplateBodyParams: process.env.WHATSAPP_DAILY_TEMPLATE_BODY_PARAMS,
-  whatsappWeeklyTemplateName: process.env.WHATSAPP_WEEKLY_TEMPLATE_NAME,
-  whatsappWeeklyTemplateLanguage: process.env.WHATSAPP_WEEKLY_TEMPLATE_LANGUAGE,
-  whatsappWeeklyTemplateBodyParams: process.env.WHATSAPP_WEEKLY_TEMPLATE_BODY_PARAMS,
-
-  // Recordatorios autom\u00e1ticos
   reminderInternalApiKey: process.env.REMINDER_INTERNAL_API_KEY,
-  reminderCronEnabled: process.env.REMINDER_CRON_ENABLED,
-  reminderCronTimezone: process.env.REMINDER_CRON_TIMEZONE,
-
-  // Modo TEST (un solo cron que dispara las 3 plantillas a un tel\u00e9fono de prueba)
-  reminderTestMode: process.env.REMINDER_TEST_MODE,
-  reminderTestSchedule: process.env.REMINDER_TEST_SCHEDULE,
-  reminderTestPhone: process.env.REMINDER_TEST_PHONE,
-
-  // Modo PROD (2 cron jobs separados; welcome se dispara on-create)
-  reminderDailyCronSchedule: process.env.REMINDER_DAILY_CRON_SCHEDULE,
-  reminderWeeklyCronSchedule: process.env.REMINDER_WEEKLY_CRON_SCHEDULE,
-
   // ===== Agente Nedi (microlearning por WhatsApp / Evolution) =====
   // OpenAI
   openaiApiKey: process.env.OPENAI_API_KEY,

@@ -5,7 +5,6 @@ export enum UserRole {
   ADMIN = 'admin',
   INSTRUCTOR = 'instructor',
   STUDENT = 'student',
-  META = 'meta',
 }
 
 /**
@@ -22,7 +21,7 @@ export interface User {
   name: string;
   /** User's role in the system */
   role: UserRole;
-  /** Whether the account is active (defaults to true). Used for Meta and other roles. */
+  /** Whether the account is active (defaults to true). */
   isActive?: boolean;
   /**
    * User's phone number in E.164 format (e.g. +573001234567).

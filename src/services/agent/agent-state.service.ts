@@ -9,7 +9,6 @@ import { AgentState, AGENT_STATE_TABLE } from '../../models/agent-state.entity';
 import {
   CourseModuleQuestions,
   COURSE_MODULE_QUESTIONS_TABLE,
-  LEGACY_QUESTION_BANK_TABLE,
   ModuleQuestion,
   parseProgressStatus,
   progressPhoneKey,
@@ -111,14 +110,13 @@ export class AgentStateService {
   // ===== Banco de preguntas =====
 
   async getQuestionBank(courseId: string, moduleId: string): Promise<ModuleQuestion[] | null> {
-    for (const tableName of [COURSE_MODULE_QUESTIONS_TABLE, LEGACY_QUESTION_BANK_TABLE]) {
-      const res = await this.dynamoClient.send(
-        new GetCommand({ TableName: tableName, Key: { courseId, moduleId } }),
-      );
-      const parsed = this.parseQuestionBankItem(res.Item as CourseModuleQuestions | undefined);
-      if (parsed) return parsed;
-    }
-    return null;
+    const res = await this.dynamoClient.send(
+      new GetCommand({
+        TableName: COURSE_MODULE_QUESTIONS_TABLE,
+        Key: { courseId, moduleId },
+      }),
+    );
+    return this.parseQuestionBankItem(res.Item as CourseModuleQuestions | undefined);
   }
 
   private parseQuestionBankItem(item?: CourseModuleQuestions): ModuleQuestion[] | null {

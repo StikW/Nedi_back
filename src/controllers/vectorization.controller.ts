@@ -35,23 +35,12 @@ export class VectorizationController {
 
     const allowSync = process.env.E2E_SMOKE_ALLOW_SYNC === 'true';
     if (sync && allowSync) {
-      const result = await this.vectorizationService.ingestModule(courseId, moduleId);
-      console.log(
-        `[vectorizacion] modulo ${moduleId} (sync): ${result.files} archivos, ${result.chunks} fragmentos`,
-      );
-      return result;
+      return this.vectorizationService.ingestModule(courseId, moduleId);
     }
 
-    // Fire-and-forget: la extraccion + embeddings puede tardar; no bloqueamos
-    // la respuesta HTTP (mismo comportamiento async que el webhook n8n).
-    this.vectorizationService
-      .ingestModule(courseId, moduleId)
-      .then((r) =>
-        console.log(`[vectorizacion] modulo ${moduleId}: ${r.files} archivos, ${r.chunks} fragmentos`),
-      )
-      .catch((err) =>
-        console.error(`[vectorizacion] error modulo ${moduleId}:`, err?.message || err),
-      );
+    this.vectorizationService.ingestModule(courseId, moduleId).catch((err) =>
+      console.error(`[vectorizacion] error modulo ${moduleId}:`, err?.message || err),
+    );
 
     return { success: true, message: 'Vectorización iniciada exitosamente' };
   }

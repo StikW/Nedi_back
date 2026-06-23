@@ -100,18 +100,6 @@ const tables = [
     globalSecondaryIndexes: [],
   },
   {
-    name: tableName('CourseModuleProgress'),
-    keySchema: [
-      { AttributeName: 'courseId', KeyType: 'HASH' },
-      { AttributeName: 'moduleId', KeyType: 'RANGE' },
-    ],
-    attributeDefinitions: [
-      { AttributeName: 'courseId', AttributeType: 'S' },
-      { AttributeName: 'moduleId', AttributeType: 'S' },
-    ],
-    globalSecondaryIndexes: [],
-  },
-  {
     name: tableName('ModuleProgress'),
     keySchema: [{ AttributeName: 'id', KeyType: 'HASH' }],
     attributeDefinitions: [{ AttributeName: 'id', AttributeType: 'S' }],
@@ -151,81 +139,13 @@ const tables = [
     ],
   },
   {
-    name: tableName('Workflows'),
-    keySchema: [{ AttributeName: 'id', KeyType: 'HASH' }],
-    attributeDefinitions: [
-      { AttributeName: 'id', AttributeType: 'S' },
-      { AttributeName: 'ownerId', AttributeType: 'S' },
-    ],
-    globalSecondaryIndexes: [
-      {
-        IndexName: 'ownerId-index',
-        KeySchema: [{ AttributeName: 'ownerId', KeyType: 'HASH' }],
-        Projection: { ProjectionType: 'ALL' },
-      },
-    ],
-  },
-  {
-    name: tableName('Credentials'),
-    keySchema: [{ AttributeName: 'id', KeyType: 'HASH' }],
-    attributeDefinitions: [
-      { AttributeName: 'id', AttributeType: 'S' },
-      { AttributeName: 'instructorId', AttributeType: 'S' },
-    ],
-    globalSecondaryIndexes: [
-      {
-        IndexName: 'instructorId-index',
-        KeySchema: [{ AttributeName: 'instructorId', KeyType: 'HASH' }],
-        Projection: { ProjectionType: 'ALL' },
-      },
-    ],
-  },
-  {
-    name: tableName('TokenBlacklist'),
-    keySchema: [{ AttributeName: 'token', KeyType: 'HASH' }],
-    attributeDefinitions: [{ AttributeName: 'token', AttributeType: 'S' }],
-    globalSecondaryIndexes: [],
-  },
-  {
-    // Estado conversacional del agente Nedi por (instancia + telefono).
-    // id compuesto: `${instance}#${phoneNumber}`
     name: tableName('AgentState'),
     keySchema: [{ AttributeName: 'id', KeyType: 'HASH' }],
     attributeDefinitions: [{ AttributeName: 'id', AttributeType: 'S' }],
     globalSecondaryIndexes: [],
   },
   {
-    name: tableName('MetaContacts'),
-    keySchema: [{ AttributeName: 'id', KeyType: 'HASH' }],
-    attributeDefinitions: [{ AttributeName: 'id', AttributeType: 'S' }],
-    globalSecondaryIndexes: [],
-  },
-  {
-    name: tableName('MetaTemplates'),
-    keySchema: [{ AttributeName: 'id', KeyType: 'HASH' }],
-    attributeDefinitions: [{ AttributeName: 'id', AttributeType: 'S' }],
-    globalSecondaryIndexes: [],
-  },
-  {
-    name: tableName('MetaApiConfig'),
-    keySchema: [{ AttributeName: 'id', KeyType: 'HASH' }],
-    attributeDefinitions: [{ AttributeName: 'id', AttributeType: 'S' }],
-    globalSecondaryIndexes: [],
-  },
-  {
-    name: tableName('MetaMessages'),
-    keySchema: [{ AttributeName: 'id', KeyType: 'HASH' }],
-    attributeDefinitions: [{ AttributeName: 'id', AttributeType: 'S' }],
-    globalSecondaryIndexes: [],
-  },
-  {
-    name: tableName('MetaWebhookEvents'),
-    keySchema: [{ AttributeName: 'id', KeyType: 'HASH' }],
-    attributeDefinitions: [{ AttributeName: 'id', AttributeType: 'S' }],
-    globalSecondaryIndexes: [],
-  },
-  {
-    name: tableName('MetaApiLogs'),
+    name: tableName('NotificationConfig'),
     keySchema: [{ AttributeName: 'id', KeyType: 'HASH' }],
     attributeDefinitions: [{ AttributeName: 'id', AttributeType: 'S' }],
     globalSecondaryIndexes: [],

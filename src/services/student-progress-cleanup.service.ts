@@ -11,7 +11,6 @@ import {
   STUDENT_PROGRESS_TABLE,
   StudentQuestionProgress,
   COURSE_MODULE_QUESTIONS_TABLE,
-  LEGACY_QUESTION_BANK_TABLE,
 } from '../models/course-module-questions.entity';
 import { ModuleProgressService } from './module-progress.service';
 
@@ -106,24 +105,17 @@ export class StudentProgressCleanupService {
   }
 
   private async deleteQuestionBanks(courseId: string, moduleId: string): Promise<number> {
-    let deleted = 0;
-    const key = { courseId, moduleId };
-
-    for (const tableName of [COURSE_MODULE_QUESTIONS_TABLE, LEGACY_QUESTION_BANK_TABLE]) {
-      try {
-        await this.dynamoClient.send(
-          new DeleteCommand({
-            TableName: tableName,
-            Key: key,
-          }),
-        );
-        deleted++;
-      } catch {
-        /* tabla legacy puede no existir */
-      }
+    try {
+      await this.dynamoClient.send(
+        new DeleteCommand({
+          TableName: COURSE_MODULE_QUESTIONS_TABLE,
+          Key: { courseId, moduleId },
+        }),
+      );
+      return 1;
+    } catch {
+      return 0;
     }
-
-    return deleted;
   }
 
   private async deleteProgressByModuleId(moduleId: string): Promise<number> {

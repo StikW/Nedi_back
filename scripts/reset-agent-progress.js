@@ -20,7 +20,7 @@
  *   - ModuleProgress   (módulos completados)
  *   - Progress         (índice de pregunta por teléfono+módulo)
  *   - AgentState       (estado conversacional del agente)
- *   - CourseModuleQuestions (+ legacy CourseModuleProgress si --clear-questions)
+ *   - CourseModuleQuestions (si --clear-questions)
  */
 
 const path = require('path');
@@ -47,7 +47,6 @@ const TABLES = {
   progress: t('Progress'),
   agentState: t('AgentState'),
   questions: t('CourseModuleQuestions'),
-  questionsLegacy: t('CourseModuleProgress'),
   courseModules: t('CourseModules'),
 };
 
@@ -195,32 +194,25 @@ async function collectAgentState(doc, courseId) {
 async function collectQuestionBanks(doc, courseId, moduleId) {
   const banks = [];
   if (moduleId && courseId) {
-    // get directo por clave compuesta
-    for (const table of [TABLES.questions, TABLES.questionsLegacy]) {
-      try {
-        const res = await doc.send(
-          new GetCommand({
-            TableName: table,
-            Key: { courseId, moduleId },
-          }),
-        );
-        if (res.Item) banks.push({ table, key: { courseId, moduleId } });
-      } catch {
-        /* tabla puede no existir */
-      }
+    try {
+      const res = await doc.send(
+        new GetCommand({
+          TableName: TABLES.questions,
+          Key: { courseId, moduleId },
+        }),
+      );
+      if (res.Item) banks.push({ table: TABLES.questions, key: { courseId, moduleId } });
+    } catch {
+      /* tabla puede no existir */
     }
     return banks;
   }
   if (courseId) {
     const allQ = await scanTable(doc, TABLES.questions, 'courseId = :c', { ':c': courseId });
-    const allL = await scanTable(doc, TABLES.questionsLegacy, 'courseId = :c', { ':c': courseId });
-    return [
-      ...allQ.map((item) => ({ table: TABLES.questions, key: { courseId: item.courseId, moduleId: item.moduleId } })),
-      ...allL.map((item) => ({
-        table: TABLES.questionsLegacy,
-        key: { courseId: item.courseId, moduleId: item.moduleId },
-      })),
-    ];
+    return allQ.map((item) => ({
+      table: TABLES.questions,
+      key: { courseId: item.courseId, moduleId: item.moduleId },
+    }));
   }
   return [];
 }

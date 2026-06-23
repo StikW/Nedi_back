@@ -1,11 +1,11 @@
 import { Inject, Injectable, Logger, forwardRef } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { StudentService } from './student.service';
 import { CourseService } from './course.service';
 import { CourseModuleService } from './course-module.service';
 import { ModuleProgressService } from './module-progress.service';
 import { UsersService } from './users.service';
 import { WhatsAppService, WhatsAppTemplateType } from './whatsapp.service';
+import { NotificationConfigService } from './notification-config.service';
 import { Student } from '../models/student.entity';
 
 export interface ReminderCandidate {
@@ -76,7 +76,6 @@ export class ReminderService {
   private readonly logger = new Logger(ReminderService.name);
 
   constructor(
-    private readonly configService: ConfigService,
     @Inject(forwardRef(() => StudentService))
     private readonly studentService: StudentService,
     @Inject(forwardRef(() => CourseService))
@@ -88,6 +87,7 @@ export class ReminderService {
     @Inject(forwardRef(() => UsersService))
     private readonly usersService: UsersService,
     private readonly whatsappService: WhatsAppService,
+    private readonly notificationConfigService: NotificationConfigService,
   ) {}
 
   // =====================================================
@@ -106,7 +106,7 @@ export class ReminderService {
     type: WhatsAppTemplateType,
     options: RunOptions = {},
   ): Promise<ReminderRunSummary> {
-    const testCfg = this.getTestConfig();
+    const testCfg = await this.getTestConfig();
     const effective: RunOptions = {
       ...options,
       force: options.force ?? testCfg.enabled,
@@ -120,7 +120,7 @@ export class ReminderService {
    * Cada estudiante elegible recibir\u00e1 las 3 plantillas en r\u00e1pida sucesi\u00f3n.
    */
   async runAll(options: RunOptions = {}): Promise<ReminderRunSummary> {
-    const testCfg = this.getTestConfig();
+    const testCfg = await this.getTestConfig();
     const effective: RunOptions = {
       ...options,
       force: options.force ?? true,
@@ -172,6 +172,11 @@ export class ReminderService {
     error?: string;
   }> {
     try {
+      const cfg = await this.notificationConfigService.getEffectiveConfig();
+      if (!cfg.notificationsEnabled) {
+        return { sent: false, skippedReason: 'notifications_disabled' };
+      }
+
       const candidate = await this.buildWelcomeCandidate(student);
       if (!candidate) {
         return { sent: false, skippedReason: 'not_eligible' };
@@ -187,7 +192,7 @@ export class ReminderService {
       const result = await this.whatsappService.sendTemplateMessage(
         student.phoneNumber,
         'welcome',
-        { bodyParams: this.buildTemplateParams('welcome', candidate) },
+        { bodyParams: await this.buildTemplateParams('welcome', candidate) },
       );
 
       if (result.success) {
@@ -259,14 +264,38 @@ export class ReminderService {
       };
     }
 
+    if (!force && type !== 'welcome') {
+      const cfg = await this.notificationConfigService.getEffectiveConfig();
+      if (!this.notificationConfigService.isSendDayToday(type, cfg)) {
+        return {
+          eligible: true,
+          sent: false,
+          type,
+          candidate,
+          skippedReason: 'not_scheduled_today',
+        };
+      }
+    }
+
     if (dryRun) {
       return { eligible: true, sent: false, type, candidate, skippedReason: 'dry_run' };
+    }
+
+    const cfg = await this.notificationConfigService.getEffectiveConfig();
+    if (!cfg.notificationsEnabled) {
+      return {
+        eligible: true,
+        sent: false,
+        type,
+        candidate,
+        skippedReason: 'notifications_disabled',
+      };
     }
 
     const sendResult = await this.whatsappService.sendTemplateMessage(
       student.phoneNumber,
       type,
-      { bodyParams: this.buildTemplateParams(type, candidate) },
+      { bodyParams: await this.buildTemplateParams(type, candidate) },
     );
 
     if (sendResult.success) {
@@ -291,7 +320,7 @@ export class ReminderService {
     type: WhatsAppTemplateType,
     options: RunOptions,
   ): Promise<ReminderRunSummary> {
-    const testCfg = this.getTestConfig();
+    const testCfg = await this.getTestConfig();
     const summary: ReminderRunSummary = {
       type,
       scannedStudents: 0,
@@ -304,6 +333,22 @@ export class ReminderService {
       candidates: [],
       failures: [],
     };
+
+    const cfg = await this.notificationConfigService.getEffectiveConfig();
+    if (!cfg.notificationsEnabled && !options.dryRun) {
+      this.logger.log(`Recordatorios[${type}]: omitidos (notificaciones desactivadas)`);
+      return summary;
+    }
+
+    if (
+      !options.dryRun &&
+      !options.force &&
+      type !== 'welcome' &&
+      !this.notificationConfigService.isSendDayToday(type, cfg)
+    ) {
+      this.logger.log(`Recordatorios[${type}]: hoy no es día de envío configurado`);
+      return summary;
+    }
 
     const students = await this.studentService.findAllStudents();
     summary.scannedStudents = students.length;
@@ -346,7 +391,7 @@ export class ReminderService {
 
         const recipient = options.overrideRecipientPhone || student.phoneNumber;
         const result = await this.whatsappService.sendTemplateMessage(recipient, type, {
-          bodyParams: this.buildTemplateParams(type, candidate),
+          bodyParams: await this.buildTemplateParams(type, candidate),
         });
 
         if (result.success) {
@@ -533,11 +578,11 @@ export class ReminderService {
    *   - completed         \u2192 m\u00f3dulos ya completados
    *   - instructor_phone  \u2192 tel\u00e9fono del instructor (para `nedi_bienvenida_curso`)
    */
-  private buildTemplateParams(
+  private async buildTemplateParams(
     type: WhatsAppTemplateType,
     candidate: ReminderCandidate,
-  ): string[] {
-    const tokens = this.whatsappService.getBodyParamTokens(type);
+  ): Promise<string[]> {
+    const tokens = await this.whatsappService.getBodyParamTokens(type);
     const pending = Math.max(0, candidate.totalModules - candidate.completedModules);
 
     const lookup: Record<string, string> = {
@@ -603,12 +648,12 @@ export class ReminderService {
   //  Helpers
   // =====================================================
 
-  private getTestConfig(): { enabled: boolean; testPhone?: string } {
-    const enabled =
-      (this.configService.get<string>('REMINDER_TEST_MODE') || '').toLowerCase() === 'true';
-    const raw = this.configService.get<string>('REMINDER_TEST_PHONE');
-    const testPhone = raw && raw.trim().length > 0 ? raw.trim() : undefined;
-    return { enabled, testPhone };
+  private async getTestConfig(): Promise<{ enabled: boolean; testPhone?: string }> {
+    const cfg = await this.notificationConfigService.getEffectiveConfig();
+    return {
+      enabled: cfg.reminderTestMode,
+      testPhone: cfg.reminderTestPhone,
+    };
   }
 
   private daysBetween(fromMs: number, toMs: number): number {

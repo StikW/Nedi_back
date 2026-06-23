@@ -27,9 +27,6 @@ const _tablePrefix = process.env.DYNAMODB_TABLE_PREFIX || '';
 /** Tabla oficial de n8n (WF_ObtenerPreguntas / WF_GeneradorPreguntas). */
 export const COURSE_MODULE_QUESTIONS_TABLE = _tablePrefix + 'CourseModuleQuestions';
 
-/** Tabla legacy del primer intento de migracion; solo lectura como fallback. */
-export const LEGACY_QUESTION_BANK_TABLE = _tablePrefix + 'CourseModuleProgress';
-
 /**
  * Avance del estudiante por modulo. Equivale a la tabla `Progress` de n8n
  * (clave: phoneNumber + moduleId). n8n usa prefijo `wa` en phoneNumber y campo `status`.

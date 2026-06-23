@@ -1,8 +1,10 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ReminderController } from '../controllers/reminder.controller';
+import { AdminNotificationConfigController } from '../controllers/admin-notification-config.controller';
 import { ReminderService } from '../services/reminder.service';
 import { WhatsAppService } from '../services/whatsapp.service';
+import { NotificationConfigService } from '../services/notification-config.service';
 import { ReminderSchedulerService } from '../services/reminder-scheduler.service';
 import { InternalApiKeyGuard } from '../strategies/internal-api-key.guard';
 import { StudentsModule } from './students.module';
@@ -22,13 +24,14 @@ import { UsersModule } from './users.module';
     forwardRef(() => CourseModulesModule),
     forwardRef(() => ModuleProgressModule),
   ],
-  controllers: [ReminderController],
+  controllers: [ReminderController, AdminNotificationConfigController],
   providers: [
+    NotificationConfigService,
     WhatsAppService,
     ReminderService,
     ReminderSchedulerService,
     InternalApiKeyGuard,
   ],
-  exports: [ReminderService, WhatsAppService],
+  exports: [ReminderService, WhatsAppService, NotificationConfigService],
 })
 export class RemindersModule {}

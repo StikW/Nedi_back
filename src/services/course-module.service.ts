@@ -215,10 +215,7 @@ export class CourseModuleService {
     if (removedKeys.length === 0) return;
 
     try {
-      const deleted = await this.uploadsService.deleteModuleFileKeys(removedKeys);
-      console.log(
-        `Modulo ${moduleId}: eliminados ${deleted} archivo(s) obsoleto(s) de S3`,
-      );
+      await this.uploadsService.deleteModuleFileKeys(removedKeys);
     } catch (error: any) {
       console.warn(
         `Warning: no se pudieron eliminar archivos S3 del modulo ${moduleId}:`,
