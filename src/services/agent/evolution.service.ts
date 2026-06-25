@@ -373,19 +373,103 @@ export class EvolutionService {
 
   private async assertInstanceOpen(cfg: EvolutionConfig): Promise<void> {
     const keys = this.allKeys(cfg);
+    let reachable = false;
+    let lastState: string | undefined;
+
     for (const key of keys) {
       try {
         const json = await this.get(this.withKey(cfg, key), `/instance/connectionState/${cfg.instance}`);
+        reachable = true;
         const state = json?.instance?.state || json?.state || 'close';
+        lastState = state;
         if (state === 'open') return;
-        throw new Error(`state=${state}`);
       } catch (err: any) {
         this.logger.warn(
-          `connectionState ${cfg.instance} con key ...${key.slice(-4)}: ${err?.message || err}`,
+          `connectionState ${cfg.instance} con key ...${key.slice(-4)}: ${this.describeError(err)}`,
         );
       }
     }
-    throw new Error(`Instancia Evolution "${cfg.instance}" no esta conectada (open)`);
+
+    // Solo bloqueamos si pudimos hablar con Evolution y reporta un estado != open.
+    if (reachable) {
+      throw new Error(
+        `Instancia Evolution "${cfg.instance}" no esta conectada (state=${lastState || 'desconocido'})`,
+      );
+    }
+
+    // No se pudo contactar connectionState (fetch failed / timeout). No asumimos
+    // desconexion: la instancia puede seguir "open" en Evolution. Intentamos el
+    // envio de todas formas; si la red esta realmente caida, sendText lo reportara.
+    this.logger.warn(
+      `No se pudo verificar connectionState de ${cfg.instance} (Evolution inaccesible); se intenta el envio de todas formas`,
+    );
+  }
+
+  /** Detecta errores de red/timeout (vs. respuestas HTTP de la API). */
+  private isUnreachable(err: any): boolean {
+    const msg = (err?.message || '').toLowerCase();
+    const causeCode = (err?.cause?.code || err?.cause?.errno || '')
+      .toString()
+      .toUpperCase();
+    return (
+      msg.includes('fetch failed') ||
+      msg.includes('timeout') ||
+      msg.includes('aborted') ||
+      err?.name === 'TimeoutError' ||
+      [
+        'ECONNREFUSED',
+        'ECONNRESET',
+        'ETIMEDOUT',
+        'ENOTFOUND',
+        'EAI_AGAIN',
+        'EHOSTUNREACH',
+        'ENETUNREACH',
+        'UND_ERR_CONNECT_TIMEOUT',
+        'UND_ERR_HEADERS_TIMEOUT',
+        'UND_ERR_SOCKET',
+      ].includes(causeCode)
+    );
+  }
+
+  /** Mensaje legible que expone la causa real de un "fetch failed". */
+  private describeError(err: any): string {
+    const base = err?.message || String(err);
+    const cause = err?.cause;
+    if (!cause) return base;
+    const detail = cause.code || cause.errno || cause.message || cause.name;
+    return detail && !base.includes(String(detail)) ? `${base} (cause: ${detail})` : base;
+  }
+
+  /** fetch con reintentos en fallos de red transitorios y timeout por intento. */
+  private async fetchWithRetry(
+    url: string,
+    init: RequestInit,
+    label: string,
+  ): Promise<Response> {
+    const maxAttempts = 3;
+    let lastError: any;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        return await fetch(url, {
+          ...init,
+          signal: AbortSignal.timeout(this.requestTimeoutMs),
+        });
+      } catch (err: any) {
+        lastError = err;
+        if (attempt < maxAttempts && this.isUnreachable(err)) {
+          const backoff = 400 * attempt;
+          this.logger.debug(
+            `${label} reintento ${attempt}/${maxAttempts} tras ${backoff}ms: ${this.describeError(err)}`,
+          );
+          await new Promise((resolve) => setTimeout(resolve, backoff));
+          continue;
+        }
+        const wrapped = new Error(this.describeError(err));
+        (wrapped as any).cause = err;
+        throw wrapped;
+      }
+    }
+    throw lastError;
   }
 
   private isMessageDelivered(json: any): boolean {
@@ -460,11 +544,11 @@ export class EvolutionService {
 
   private async get(cfg: EvolutionConfig, path: string): Promise<any> {
     const url = `${this.base(cfg)}${path}`;
-    const res = await fetch(url, {
-      method: 'GET',
-      headers: this.headers(cfg.apiKey),
-      signal: AbortSignal.timeout(this.requestTimeoutMs),
-    });
+    const res = await this.fetchWithRetry(
+      url,
+      { method: 'GET', headers: this.headers(cfg.apiKey) },
+      `GET ${path}`,
+    );
     const json: any = await res.json().catch(() => ({}));
     if (!res.ok) {
       throw new Error(`Evolution GET ${path} -> ${res.status} ${json?.message || ''}`);
@@ -474,12 +558,15 @@ export class EvolutionService {
 
   private async post(cfg: EvolutionConfig, path: string, body: any): Promise<any> {
     const url = `${this.base(cfg)}${path}`;
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: this.headers(cfg.apiKey),
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(this.requestTimeoutMs),
-    });
+    const res = await this.fetchWithRetry(
+      url,
+      {
+        method: 'POST',
+        headers: this.headers(cfg.apiKey),
+        body: JSON.stringify(body),
+      },
+      `POST ${path}`,
+    );
     const json: any = await res.json().catch(() => ({}));
     if (!res.ok) {
       this.logger.error(

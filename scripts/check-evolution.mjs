@@ -58,7 +58,8 @@ async function probe(label, path) {
     return res.ok;
   } catch (err) {
     const ms = Date.now() - started;
-    console.error(`${label}: FALLO (${ms}ms) ${err.message}`);
+    const cause = err.cause ? ` | cause: ${err.cause.code || err.cause.errno || err.cause.message}` : '';
+    console.error(`${label}: FALLO (${ms}ms) ${err.message}${cause}`);
     return false;
   }
 }
