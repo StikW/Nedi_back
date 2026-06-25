@@ -239,6 +239,56 @@ export class EvolutionService {
     });
   }
 
+  /** Lista conversaciones de la instancia (historial en Evolution, sin BD propia). */
+  async findChats(cfg: EvolutionConfig): Promise<any[]> {
+    const { json } = await this.postWithKeyFallback(
+      cfg,
+      `/chat/findChats/${cfg.instance}`,
+      {},
+      'findChats',
+      true,
+    );
+    return this.normalizeList(json);
+  }
+
+  /** Mensajes de un chat concreto (paginado). */
+  async findMessages(
+    cfg: EvolutionConfig,
+    remoteJid: string,
+    page = 1,
+    offset = 50,
+  ): Promise<{ records: any[]; total?: number; pages?: number; currentPage?: number }> {
+    const { json } = await this.postWithKeyFallback(
+      cfg,
+      `/chat/findMessages/${cfg.instance}`,
+      {
+        where: { key: { remoteJid } },
+        page,
+        offset,
+      },
+      'findMessages',
+      true,
+    );
+    const messages = json?.messages ?? json;
+    if (messages?.records) {
+      return {
+        records: messages.records,
+        total: messages.total,
+        pages: messages.pages,
+        currentPage: messages.currentPage,
+      };
+    }
+    return { records: this.normalizeList(json) };
+  }
+
+  private normalizeList(json: any): any[] {
+    if (Array.isArray(json)) return json;
+    if (Array.isArray(json?.chats)) return json.chats;
+    if (Array.isArray(json?.records)) return json.records;
+    if (Array.isArray(json?.response)) return json.response;
+    return json ? [json] : [];
+  }
+
   async getBase64FromMediaMessage(cfg: EvolutionConfig, rawMessage: any): Promise<string | null> {
     try {
       const { json: res } = await this.postWithKeyFallback(

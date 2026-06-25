@@ -28,6 +28,15 @@ export interface ConnectionStatus {
 export class EvolutionAdminService {
   private readonly logger = new Logger(EvolutionAdminService.name);
   private readonly requestTimeoutMs = 15_000;
+  /** Tras un fallo de red, se omiten consultas a Evolution durante este periodo. */
+  private readonly retryCooldownMs = 90_000;
+  private readonly metaCacheTtlMs = 45_000;
+  private evolutionDownUntil = 0;
+  private readonly metaCache = new Map<
+    string,
+    { expires: number; meta: { apiKey?: string; ownerNumber?: string; state?: string } }
+  >();
+  private readonly throttledLogAt = new Map<string, number>();
 
   constructor(
     private readonly configService: ConfigService,
@@ -77,6 +86,34 @@ export class EvolutionAdminService {
   private isNetworkError(err: unknown): boolean {
     const msg = String((err as { message?: string })?.message || err || '').toLowerCase();
     return msg.includes('fetch failed') || msg.includes('network') || msg.includes('timeout');
+  }
+
+  /** Indica si conviene omitir consultas en vivo a Evolution (fallo reciente de red). */
+  isEvolutionReachable(): boolean {
+    return Date.now() >= this.evolutionDownUntil;
+  }
+
+  private markEvolutionDown(): void {
+    this.evolutionDownUntil = Date.now() + this.retryCooldownMs;
+    if (this.shouldLogThrottled('evolution-down', this.retryCooldownMs)) {
+      this.logger.warn(
+        `Evolution API no accesible; se omiten consultas durante ${Math.round(this.retryCooldownMs / 1000)}s. ` +
+          'En local usa túnel SSH o verifica EVOLUTION_SERVER_URL / firewall.',
+      );
+    }
+  }
+
+  private shouldLogThrottled(key: string, intervalMs: number): boolean {
+    const now = Date.now();
+    const last = this.throttledLogAt.get(key) || 0;
+    if (now - last < intervalMs) return false;
+    this.throttledLogAt.set(key, now);
+    return true;
+  }
+
+  private logEvolutionIssue(scope: string, instance: string, err: unknown): void {
+    if (!this.shouldLogThrottled(`${scope}:${instance}`, this.retryCooldownMs)) return;
+    this.logger.debug(`${scope}/${instance}: ${(err as Error)?.message || err}`);
   }
 
   private evolutionUnavailableException(cause?: unknown): HttpException {
@@ -303,6 +340,15 @@ export class EvolutionAdminService {
   async fetchRuntimeMeta(
     instance: string,
   ): Promise<{ apiKey?: string; ownerNumber?: string; state?: string }> {
+    if (!this.isEvolutionReachable()) {
+      return {};
+    }
+
+    const cached = this.metaCache.get(instance);
+    if (cached && cached.expires > Date.now()) {
+      return cached.meta;
+    }
+
     const apiKey = this.adminKey();
     let state: string | undefined;
     try {
@@ -313,11 +359,16 @@ export class EvolutionAdminService {
       );
       state = res?.instance?.state || res?.state;
     } catch (err: any) {
-      this.logger.debug(`connectionState/${instance} en fetchRuntimeMeta: ${err?.message || err}`);
+      if (this.isNetworkError(err)) {
+        this.markEvolutionDown();
+      }
+      this.logEvolutionIssue('connectionState', instance, err);
     }
 
     const meta = await this.fetchInstanceMeta(instance, apiKey);
-    return { apiKey: meta.apiKey, ownerNumber: meta.number, state };
+    const result = { apiKey: meta.apiKey, ownerNumber: meta.number, state };
+    this.metaCache.set(instance, { expires: Date.now() + this.metaCacheTtlMs, meta: result });
+    return result;
   }
 
   /** Metadatos de la instancia en Evolution (numero vinculado y apikey propia). */
@@ -325,6 +376,10 @@ export class EvolutionAdminService {
     instance: string,
     apiKey: string,
   ): Promise<{ number?: string; apiKey?: string }> {
+    if (!this.isEvolutionReachable()) {
+      return {};
+    }
+
     try {
       const res = await this.request(
         'GET',
@@ -353,7 +408,10 @@ export class EvolutionAdminService {
 
       return { number, apiKey: instanceApiKey };
     } catch (err: any) {
-      this.logger.warn(`fetchInstances/${instance}: ${err?.message || err}`);
+      if (this.isNetworkError(err)) {
+        this.markEvolutionDown();
+      }
+      this.logEvolutionIssue('fetchInstances', instance, err);
       return {};
     }
   }
@@ -534,6 +592,9 @@ export class EvolutionAdminService {
       });
     } catch (err: any) {
       const reason = err?.name === 'TimeoutError' ? 'timeout' : err?.message || err;
+      if (this.isNetworkError(err)) {
+        this.markEvolutionDown();
+      }
       throw new Error(`fetch failed (${method} ${path}): ${reason}`);
     }
     const json: any = await res.json().catch(() => ({}));

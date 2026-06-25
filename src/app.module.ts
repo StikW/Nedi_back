@@ -14,6 +14,8 @@ import { PublicConfigModule } from './modules/public-config.module';
 import { RemindersModule } from './modules/reminders.module';
 import { AgentModule } from './modules/agent.module';
 import envConfig from './core/config/env.config';
+import { LoggingModule } from './core/logging/logging.module';
+import { AdminModule } from './modules/admin.module';
 
 @Module({
   imports: [
@@ -24,6 +26,7 @@ import envConfig from './core/config/env.config';
       load: [envConfig],
     }),
     ScheduleModule.forRoot(),
+    LoggingModule,
     DatabaseModule,
     HealthModule,
     UsersModule,
@@ -36,6 +39,7 @@ import envConfig from './core/config/env.config';
     ModuleProgressModule,
     RemindersModule,
     AgentModule,
+    AdminModule,
   ],
 })
 export class AppModule {}

@@ -1,11 +1,18 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
+import { ConfigService } from '@nestjs/config';
+import { FileConsoleLogger, parseLogLevels } from './core/logging/file-console.logger';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, {
-    logger: ['error', 'warn'],
-  });
+  const logLevels = parseLogLevels(process.env.LOG_LEVEL);
+  const logToFile = process.env.LOG_TO_FILE !== 'false';
+  const logDir = process.env.LOG_DIR || 'logs';
+
+  const logger = logToFile ? new FileConsoleLogger(logLevels, logDir) : logLevels;
+
+  const app = await NestFactory.create(AppModule, { logger });
+  const configService = app.get(ConfigService);
 
   app.useGlobalPipes(new ValidationPipe());
 
@@ -54,6 +61,7 @@ async function bootstrap() {
 
   const port = 3000;
   await app.listen(port);
-  console.log(`API http://localhost:${port}`);
+  const fileLogging = configService.get<boolean>('env.logToFile');
+  console.log(`API http://localhost:${port} | logs=${logLevels.join(',')}${fileLogging ? ` file=${logDir}` : ''}`);
 }
 bootstrap();

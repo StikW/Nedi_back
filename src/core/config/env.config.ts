@@ -53,4 +53,12 @@ export default registerAs('env', () => ({
   agentTypingDelayMs: process.env.AGENT_TYPING_DELAY_MS
     ? Number(process.env.AGENT_TYPING_DELAY_MS)
     : 1200,
+
+  // Logging (NestJS + archivos en logs/)
+  logLevel: process.env.LOG_LEVEL || 'error,warn,log,debug',
+  logToFile: process.env.LOG_TO_FILE !== 'false',
+  logDir: process.env.LOG_DIR || 'logs',
+  agentActivityLogMax: process.env.AGENT_ACTIVITY_LOG_MAX
+    ? Number(process.env.AGENT_ACTIVITY_LOG_MAX)
+    : 500,
 }));

@@ -8,6 +8,7 @@ import { MessageBufferService } from './message-buffer.service';
 import { AgentStateService } from './agent-state.service';
 import { AgentsService, RuntimeContext } from './agents.service';
 import { ParsedIncomingMessage, TenantContext } from './agent.types';
+import { AgentActivityLogService } from '../../core/logging/agent-activity-log.service';
 
 /**
  * Orquestador del agente Nedi. Punto de entrada del webhook de Evolution:
@@ -31,6 +32,7 @@ export class AgentOrchestratorService {
     private readonly buffer: MessageBufferService,
     private readonly agentState: AgentStateService,
     private readonly agents: AgentsService,
+    private readonly activityLog: AgentActivityLogService,
   ) {}
 
   /** Procesa el payload del webhook (se invoca de forma asincrona). */
@@ -53,6 +55,14 @@ export class AgentOrchestratorService {
       this.logger.warn(
         `Webhook ignorado: sin instructor para instance="${parsed.instance}" phone=${parsed.phoneNumber}`,
       );
+      this.activityLog.record({
+        level: 'warn',
+        instance: parsed.instance || '?',
+        phoneNumber: parsed.phoneNumber,
+        direction: 'in',
+        event: 'webhook_ignored',
+        detail: 'Sin instructor para la instancia',
+      });
       return;
     }
 
@@ -73,6 +83,14 @@ export class AgentOrchestratorService {
     this.logger.log(
       `[${parsed.instance}] Mensaje de ${parsed.phoneNumber}: "${text.slice(0, 80)}${text.length > 80 ? '…' : ''}" (linea instructor: ${tenant.liveOwnerNumber || tenant.instructor.evolutionNumber || tenant.instructor.phoneNumber || '?'})`,
     );
+    this.activityLog.record({
+      level: 'info',
+      instance: parsed.instance,
+      phoneNumber: parsed.phoneNumber,
+      direction: 'in',
+      event: 'message_received',
+      messagePreview: text.slice(0, 160),
+    });
     this.logger.debug(
       `[${parsed.instance}] JIDs remote=${parsed.remoteJid} alt=${parsed.remoteJidAlt} replyTo=${parsed.replyToJid} senderPn=${parsed.senderPn || '-'}`,
     );
@@ -182,6 +200,13 @@ export class AgentOrchestratorService {
       }
     } catch (err: any) {
       this.logger.error(`Error en agente: ${err?.message || err}`);
+      this.activityLog.record({
+        level: 'error',
+        instance,
+        phoneNumber,
+        event: 'agent_error',
+        detail: err?.message || String(err),
+      });
       reply = 'Disculpa, tuve un inconveniente procesando tu mensaje. ¿Puedes intentarlo de nuevo?';
     }
 
@@ -223,10 +248,28 @@ export class AgentOrchestratorService {
       this.logger.log(
         `[${tenant.evolution.instance}] Respuesta enviada desde linea ${instructorLine} hacia ${result.numberUsed} (${reply.length} chars, msgId=${result.messageId || '?'})`,
       );
+      this.activityLog.record({
+        level: 'info',
+        instance: tenant.evolution.instance,
+        phoneNumber: parsed.phoneNumber,
+        direction: 'out',
+        event: 'message_sent',
+        messagePreview: reply.slice(0, 160),
+        detail: `msgId=${result.messageId || '?'}`,
+      });
     } catch (err: any) {
       this.logger.error(
         `[${tenant.evolution.instance}] No se pudo enviar desde linea ${instructorLine} hacia ${parsed.replyToJid}: ${err?.message || err}`,
       );
+      this.activityLog.record({
+        level: 'error',
+        instance: tenant.evolution.instance,
+        phoneNumber: parsed.phoneNumber,
+        direction: 'out',
+        event: 'send_failed',
+        detail: err?.message || String(err),
+        messagePreview: reply.slice(0, 160),
+      });
     }
   }
 
