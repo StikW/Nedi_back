@@ -5,6 +5,7 @@ import { EvolutionService } from '../agent/evolution.service';
 import { EvolutionAdminService } from '../agent/evolution-admin.service';
 import { EvolutionConfig } from '../agent/agent.types';
 import { UserRole } from '../../models/user.entity';
+import { AgentActivityLogService } from '../../core/logging/agent-activity-log.service';
 
 export interface InstructorConversationSummary {
   id: string;
@@ -23,6 +24,8 @@ export interface ChatSummary {
   lastMessagePreview?: string;
   lastMessageAt?: string;
   unreadCount?: number;
+  /** evolution = historial en Evolution API; activity_log = buffer del agente en memoria */
+  source?: 'evolution' | 'activity_log';
 }
 
 export interface ChatMessageView {
@@ -44,6 +47,7 @@ export class ConversationHistoryService {
     private readonly usersService: UsersService,
     private readonly evolution: EvolutionService,
     private readonly evolutionAdmin: EvolutionAdminService,
+    private readonly activityLog: AgentActivityLogService,
   ) {}
 
   async listInstructors(): Promise<InstructorConversationSummary[]> {
@@ -79,26 +83,37 @@ export class ConversationHistoryService {
   async listChats(instructorId: string): Promise<ChatSummary[]> {
     try {
       const cfg = await this.resolveEvolutionConfig(instructorId);
-      const rawChats = await this.evolution.findChats(cfg);
+      try {
+        const rawChats = await this.evolution.findChats(cfg);
+        const chats = this.mapAndSortChats(rawChats).map((chat) => ({
+          ...chat,
+          source: 'evolution' as const,
+        }));
+        if (chats.length > 0) {
+          return chats;
+        }
+        this.logger.debug(
+          `findChats/${cfg.instance} devolvio 0 chats; usando activity log como fallback`,
+        );
+      } catch (err: any) {
+        this.logger.warn(
+          `findChats/${cfg.instance} no disponible (${err?.message || err}); usando activity log`,
+        );
+      }
 
-      const chats: ChatSummary[] = rawChats
-        .map((chat: any) => this.mapChat(chat))
-        .filter((chat): chat is ChatSummary => Boolean(chat))
-        .filter((chat) => !chat.remoteJid.endsWith('@g.us'))
-        .filter((chat) => chat.phoneNumber.length >= 10);
-
-      chats.sort((a, b) => {
-        const ta = a.lastMessageAt ? Date.parse(a.lastMessageAt) : 0;
-        const tb = b.lastMessageAt ? Date.parse(b.lastMessageAt) : 0;
-        return tb - ta;
-      });
-
-      return chats;
+      const fromLog = this.listChatsFromActivityLog(cfg.instance);
+      if (fromLog.length === 0) {
+        throw new BadGatewayException(
+          `Evolution no devolvió chats y aún no hay conversaciones en el buffer del agente para "${cfg.instance}". ` +
+            'Envía un mensaje al agente y vuelve a intentar, o revisa la conectividad con Evolution.',
+        );
+      }
+      return fromLog;
     } catch (err: any) {
       if (err instanceof HttpException) throw err;
       this.logger.error(`listChats/${instructorId}: ${err?.message || err}`);
       throw new BadGatewayException(
-        `No se pudieron cargar los chats desde Evolution: ${err?.message || err}`,
+        `No se pudieron cargar los chats: ${err?.message || err}`,
       );
     }
   }
@@ -112,19 +127,31 @@ export class ConversationHistoryService {
     try {
       const cfg = await this.resolveEvolutionConfig(instructorId);
       const normalizedJid = this.normalizeRemoteJid(remoteJid);
-      const result = await this.evolution.findMessages(cfg, normalizedJid, page, offset);
+      const phoneDigits = normalizedJid.split('@')[0].replace(/[^0-9]/g, '');
 
-      const messages = result.records
-        .map((record: any) => this.mapMessage(record, normalizedJid))
-        .filter((msg): msg is ChatMessageView => Boolean(msg))
-        .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
+      try {
+        const result = await this.evolution.findMessages(cfg, normalizedJid, page, offset);
+        if (result.records.length > 0) {
+          const messages = result.records
+            .map((record: any) => this.mapMessage(record, normalizedJid))
+            .filter((msg): msg is ChatMessageView => Boolean(msg))
+            .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
 
-      return {
-        messages,
-        total: result.total,
-        pages: result.pages,
-        currentPage: result.currentPage ?? page,
-      };
+          return {
+            messages,
+            total: result.total,
+            pages: result.pages,
+            currentPage: result.currentPage ?? page,
+          };
+        }
+      } catch (err: any) {
+        this.logger.warn(
+          `findMessages/${cfg.instance}/${phoneDigits}: ${err?.message || err}; usando activity log`,
+        );
+      }
+
+      const messages = this.listMessagesFromActivityLog(cfg.instance, phoneDigits);
+      return { messages, currentPage: 1, pages: 1, total: messages.length };
     } catch (err: any) {
       if (err instanceof HttpException) throw err;
       this.logger.error(`listMessages/${instructorId}: ${err?.message || err}`);
@@ -194,6 +221,46 @@ export class ConversationHistoryService {
     }
 
     return { serverUrl, instance, apiKey: apiKeys[0], apiKeys };
+  }
+
+  private mapAndSortChats(rawChats: any[]): ChatSummary[] {
+    const chats = rawChats
+      .map((chat: any) => this.mapChat(chat))
+      .filter((chat): chat is ChatSummary => Boolean(chat))
+      .filter((chat) => !chat.remoteJid.endsWith('@g.us'))
+      .filter((chat) => chat.phoneNumber.length >= 10);
+
+    chats.sort((a, b) => {
+      const ta = a.lastMessageAt ? Date.parse(a.lastMessageAt) : 0;
+      const tb = b.lastMessageAt ? Date.parse(b.lastMessageAt) : 0;
+      return tb - ta;
+    });
+
+    return chats;
+  }
+
+  private listChatsFromActivityLog(instance: string): ChatSummary[] {
+    return this.activityLog.recentConversations(instance).map((item) => ({
+      remoteJid: `${item.phoneNumber}@s.whatsapp.net`,
+      phoneNumber: item.phoneNumber,
+      pushName: item.phoneNumber,
+      lastMessagePreview: item.lastMessagePreview,
+      lastMessageAt: item.lastMessageAt,
+      source: 'activity_log' as const,
+    }));
+  }
+
+  private listMessagesFromActivityLog(instance: string, phoneDigits: string): ChatMessageView[] {
+    return this.activityLog.messagesForPhone(instance, phoneDigits).map((entry) => ({
+      id: entry.id,
+      remoteJid: `${phoneDigits}@s.whatsapp.net`,
+      fromMe: entry.direction === 'out',
+      messageType: entry.event === 'send_failed' ? 'error' : 'conversation',
+      text:
+        entry.messagePreview ||
+        (entry.event === 'send_failed' ? `[Envío fallido] ${entry.detail || ''}` : ''),
+      timestamp: entry.timestamp,
+    }));
   }
 
   private mapChat(raw: any): ChatSummary | null {

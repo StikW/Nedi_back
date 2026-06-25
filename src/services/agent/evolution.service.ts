@@ -11,6 +11,7 @@ import { EvolutionConfig } from './agent.types';
 @Injectable()
 export class EvolutionService {
   private readonly logger = new Logger(EvolutionService.name);
+  private readonly requestTimeoutMs = 12_000;
 
   private headers(apiKey: string): Record<string, string> {
     return {
@@ -291,19 +292,27 @@ export class EvolutionService {
       return this.normalizeList(json);
     } catch (findErr: any) {
       this.logger.warn(
-        `findChats/${cfg.instance}: ${findErr?.message || findErr}; probando fetchChats`,
+        `findChats/${cfg.instance}: ${findErr?.message || findErr}; probando alternativas`,
       );
-      try {
-        const json = await this.getWithKeyFallback(
-          cfg,
-          `/chat/fetchChats/${instance}`,
-          'fetchChats',
-          false,
-        );
-        return this.normalizeList(json);
-      } catch {
-        throw findErr;
+      for (const attempt of [
+        () =>
+          this.postWithKeyFallback(
+            cfg,
+            `/chat/fetchChats/${instance}`,
+            body,
+            'fetchChatsPost',
+            false,
+          ),
+        () => this.getWithKeyFallback(cfg, `/chat/fetchChats/${instance}`, 'fetchChatsGet', false),
+      ]) {
+        try {
+          const { json } = await attempt();
+          return this.normalizeList(json);
+        } catch {
+          // siguiente alternativa
+        }
       }
+      throw findErr;
     }
   }
 
@@ -454,6 +463,7 @@ export class EvolutionService {
     const res = await fetch(url, {
       method: 'GET',
       headers: this.headers(cfg.apiKey),
+      signal: AbortSignal.timeout(this.requestTimeoutMs),
     });
     const json: any = await res.json().catch(() => ({}));
     if (!res.ok) {
@@ -468,6 +478,7 @@ export class EvolutionService {
       method: 'POST',
       headers: this.headers(cfg.apiKey),
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(this.requestTimeoutMs),
     });
     const json: any = await res.json().catch(() => ({}));
     if (!res.ok) {
