@@ -71,7 +71,7 @@ export class EvolutionService {
     return [...new Set([digits, `${digits}@s.whatsapp.net`])];
   }
 
-  /** JIDs a probar al responder, en orden de prioridad (n8n + fallbacks @lid). */
+  /** JIDs a probar al responder. Prioriza @s.whatsapp.net (como n8n); @lid solo sin teléfono real. */
   buildReplyTargets(input: {
     replyToJid: string;
     remoteJid: string;
@@ -80,26 +80,54 @@ export class EvolutionService {
     phoneNumber: string;
     senderPn?: string;
   }): string[] {
+    const phoneDigits = (input.phoneNumber || '').replace(/[^0-9]/g, '');
     const senderDigits = (input.senderPn || '').replace(/[^0-9]/g, '');
-    const senderJid = senderDigits.length >= 10 ? `${senderDigits}@s.whatsapp.net` : '';
 
-    const candidates = [
-      input.replyToJid,
-      input.remoteJid.endsWith('@lid') ? input.remoteJid : '',
-      input.remoteJidAlt.endsWith('@lid') ? input.remoteJidAlt : '',
-      input.remoteJid,
-      input.remoteJidAlt,
+    const whatsappJid = this.pickWhatsappJid([
       input.recipientJid,
-      senderJid,
-      input.phoneNumber ? `${input.phoneNumber}@s.whatsapp.net` : '',
-      input.phoneNumber,
-    ].filter(Boolean);
+      input.remoteJidAlt,
+      input.remoteJid,
+      input.replyToJid,
+    ]);
+
+    const primary: string[] = [];
+    if (whatsappJid) {
+      primary.push(whatsappJid);
+    }
+    if (phoneDigits.length >= 10) {
+      primary.push(phoneDigits, `${phoneDigits}@s.whatsapp.net`);
+    }
+    if (senderDigits.length >= 10 && senderDigits !== phoneDigits) {
+      primary.push(`${senderDigits}@s.whatsapp.net`, senderDigits);
+    }
 
     const expanded: string[] = [];
-    for (const candidate of candidates) {
-      expanded.push(...this.outboundNumberVariants(candidate));
+    for (const target of primary) {
+      expanded.push(...this.outboundNumberVariants(target));
     }
-    return [...new Set(expanded)];
+
+    if (expanded.length === 0) {
+      for (const lid of [input.remoteJidAlt, input.remoteJid, input.replyToJid]) {
+        if (lid?.endsWith('@lid')) {
+          expanded.push(lid);
+        }
+      }
+    }
+
+    const unique = [...new Set(expanded.filter(Boolean))];
+    return [
+      ...unique.filter((target) => !target.includes('@lid')),
+      ...unique.filter((target) => target.includes('@lid')),
+    ];
+  }
+
+  private pickWhatsappJid(candidates: string[]): string | undefined {
+    for (const jid of candidates) {
+      if (jid?.includes('@s.whatsapp.net')) {
+        return jid;
+      }
+    }
+    return undefined;
   }
 
   /** Envia un mensaje de texto al estudiante. */
@@ -116,6 +144,10 @@ export class EvolutionService {
     let lastError: Error | undefined;
 
     for (const number of targets) {
+      if (number.includes('@lid') && targets.some((t) => !t.includes('@lid'))) {
+        continue;
+      }
+
       try {
         await this.sendPresence(cfg, number, presenceDelayMs);
       } catch (err: any) {

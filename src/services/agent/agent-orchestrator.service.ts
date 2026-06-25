@@ -119,6 +119,14 @@ export class AgentOrchestratorService {
       this.logger.warn(
         `[${tenant.evolution.instance}] El remitente ${phoneNumber} es el mismo numero vinculado al instructor; WhatsApp puede mostrar "escribiendo" pero no entregar respuestas. Prueba desde otro telefono.`,
       );
+      this.activityLog.record({
+        level: 'warn',
+        instance: tenant.evolution.instance,
+        phoneNumber,
+        direction: 'in',
+        event: 'self_chat',
+        detail: `Remitente=${senderDigits} coincide con linea instructor=${instructorDigits}`,
+      });
     }
   }
 
@@ -255,7 +263,7 @@ export class AgentOrchestratorService {
         direction: 'out',
         event: 'message_sent',
         messagePreview: reply.slice(0, 160),
-        detail: `msgId=${result.messageId || '?'}`,
+        detail: `to=${result.numberUsed} msgId=${result.messageId || '?'}`,
       });
     } catch (err: any) {
       this.logger.error(
@@ -267,8 +275,8 @@ export class AgentOrchestratorService {
         phoneNumber: parsed.phoneNumber,
         direction: 'out',
         event: 'send_failed',
-        detail: err?.message || String(err),
         messagePreview: reply.slice(0, 160),
+        detail: `to=${parsed.replyToJid} ${err?.message || String(err)}`,
       });
     }
   }
@@ -310,10 +318,14 @@ export class AgentOrchestratorService {
     const remoteJidAlt: string = key.remoteJidAlt || '';
     const senderPn: string = key.senderPn || data?.senderPn || '';
 
-    // n8n: si remoteJid tiene @s.whatsapp.net usarlo; si no, remoteJidAlt (@lid -> telefono real)
+    // n8n: si remoteJid tiene @s.whatsapp.net usarlo; si no, remoteJidAlt o senderPn
     const replyToJid = remoteJid.includes('@s.whatsapp.net')
       ? remoteJid
-      : remoteJidAlt || remoteJid;
+      : remoteJidAlt.includes('@s.whatsapp.net')
+        ? remoteJidAlt
+        : senderPn
+          ? `${senderPn.replace(/[^0-9]/g, '')}@s.whatsapp.net`
+          : remoteJidAlt || remoteJid;
 
     let recipientJid: string;
     if (remoteJid.includes('@s.whatsapp.net')) {
