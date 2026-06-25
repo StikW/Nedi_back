@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException, BadGatewayException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadGatewayException, HttpException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { UsersService } from '../users.service';
 import { EvolutionService } from '../agent/evolution.service';
@@ -77,22 +77,30 @@ export class ConversationHistoryService {
   }
 
   async listChats(instructorId: string): Promise<ChatSummary[]> {
-    const cfg = await this.resolveEvolutionConfig(instructorId);
-    const rawChats = await this.evolution.findChats(cfg);
+    try {
+      const cfg = await this.resolveEvolutionConfig(instructorId);
+      const rawChats = await this.evolution.findChats(cfg);
 
-    const chats: ChatSummary[] = rawChats
-      .map((chat: any) => this.mapChat(chat))
-      .filter((chat): chat is ChatSummary => Boolean(chat))
-      .filter((chat) => !chat.remoteJid.endsWith('@g.us'))
-      .filter((chat) => chat.phoneNumber.length >= 10);
+      const chats: ChatSummary[] = rawChats
+        .map((chat: any) => this.mapChat(chat))
+        .filter((chat): chat is ChatSummary => Boolean(chat))
+        .filter((chat) => !chat.remoteJid.endsWith('@g.us'))
+        .filter((chat) => chat.phoneNumber.length >= 10);
 
-    chats.sort((a, b) => {
-      const ta = a.lastMessageAt ? Date.parse(a.lastMessageAt) : 0;
-      const tb = b.lastMessageAt ? Date.parse(b.lastMessageAt) : 0;
-      return tb - ta;
-    });
+      chats.sort((a, b) => {
+        const ta = a.lastMessageAt ? Date.parse(a.lastMessageAt) : 0;
+        const tb = b.lastMessageAt ? Date.parse(b.lastMessageAt) : 0;
+        return tb - ta;
+      });
 
-    return chats;
+      return chats;
+    } catch (err: any) {
+      if (err instanceof HttpException) throw err;
+      this.logger.error(`listChats/${instructorId}: ${err?.message || err}`);
+      throw new BadGatewayException(
+        `No se pudieron cargar los chats desde Evolution: ${err?.message || err}`,
+      );
+    }
   }
 
   async listMessages(
@@ -101,21 +109,29 @@ export class ConversationHistoryService {
     page = 1,
     offset = 50,
   ): Promise<{ messages: ChatMessageView[]; total?: number; pages?: number; currentPage?: number }> {
-    const cfg = await this.resolveEvolutionConfig(instructorId);
-    const normalizedJid = this.normalizeRemoteJid(remoteJid);
-    const result = await this.evolution.findMessages(cfg, normalizedJid, page, offset);
+    try {
+      const cfg = await this.resolveEvolutionConfig(instructorId);
+      const normalizedJid = this.normalizeRemoteJid(remoteJid);
+      const result = await this.evolution.findMessages(cfg, normalizedJid, page, offset);
 
-    const messages = result.records
-      .map((record: any) => this.mapMessage(record, normalizedJid))
-      .filter((msg): msg is ChatMessageView => Boolean(msg))
-      .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
+      const messages = result.records
+        .map((record: any) => this.mapMessage(record, normalizedJid))
+        .filter((msg): msg is ChatMessageView => Boolean(msg))
+        .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
 
-    return {
-      messages,
-      total: result.total,
-      pages: result.pages,
-      currentPage: result.currentPage ?? page,
-    };
+      return {
+        messages,
+        total: result.total,
+        pages: result.pages,
+        currentPage: result.currentPage ?? page,
+      };
+    } catch (err: any) {
+      if (err instanceof HttpException) throw err;
+      this.logger.error(`listMessages/${instructorId}: ${err?.message || err}`);
+      throw new BadGatewayException(
+        `No se pudieron cargar los mensajes desde Evolution: ${err?.message || err}`,
+      );
+    }
   }
 
   private async resolveEvolutionConfig(instructorId: string): Promise<EvolutionConfig> {
@@ -125,8 +141,15 @@ export class ConversationHistoryService {
     }
 
     const instance = instructor.evolutionInstance || `nedi_${instructor.id}`;
-    const serverUrl = this.configService.get<string>('env.evolutionServerUrl') || '';
-    const adminKey = (this.configService.get<string>('env.evolutionAdminApiKey') || '').trim();
+    const serverUrl =
+      this.configService.get<string>('env.evolutionServerUrl') ||
+      this.configService.get<string>('EVOLUTION_SERVER_URL') ||
+      '';
+    const adminKey = (
+      this.configService.get<string>('env.evolutionAdminApiKey') ||
+      this.configService.get<string>('EVOLUTION_ADMIN_API_KEY') ||
+      ''
+    ).trim();
     let storedKey = (instructor.evolutionApiKey || '').trim();
     if (storedKey && adminKey && storedKey === adminKey) {
       storedKey = '';
@@ -151,9 +174,14 @@ export class ConversationHistoryService {
       }
     }
 
-    const apiKeys = [
+    const instanceKeys = [
       ...new Set([liveKey, storedKey].filter((key) => key && (!adminKey || key !== adminKey))),
     ];
+    const apiKeys = instanceKeys.length > 0 ? instanceKeys : adminKey ? [adminKey] : [];
+
+    if (!serverUrl) {
+      throw new BadGatewayException('EVOLUTION_SERVER_URL no configurado en el backend.');
+    }
     if (apiKeys.length === 0) {
       if (!this.evolutionAdmin.isEvolutionReachable()) {
         throw new BadGatewayException(

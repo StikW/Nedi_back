@@ -23,6 +23,10 @@ export class EvolutionService {
     return (cfg.serverUrl || '').replace(/\/+$/, '');
   }
 
+  private instancePath(instance: string): string {
+    return encodeURIComponent(instance);
+  }
+
   private withKey(cfg: EvolutionConfig, apiKey: string): EvolutionConfig {
     return { ...cfg, apiKey };
   }
@@ -273,14 +277,34 @@ export class EvolutionService {
 
   /** Lista conversaciones de la instancia (historial en Evolution, sin BD propia). */
   async findChats(cfg: EvolutionConfig): Promise<any[]> {
-    const { json } = await this.postWithKeyFallback(
-      cfg,
-      `/chat/findChats/${cfg.instance}`,
-      {},
-      'findChats',
-      true,
-    );
-    return this.normalizeList(json);
+    const instance = this.instancePath(cfg.instance);
+    const body = { limit: 200, offset: 0 };
+
+    try {
+      const { json } = await this.postWithKeyFallback(
+        cfg,
+        `/chat/findChats/${instance}`,
+        body,
+        'findChats',
+        false,
+      );
+      return this.normalizeList(json);
+    } catch (findErr: any) {
+      this.logger.warn(
+        `findChats/${cfg.instance}: ${findErr?.message || findErr}; probando fetchChats`,
+      );
+      try {
+        const json = await this.getWithKeyFallback(
+          cfg,
+          `/chat/fetchChats/${instance}`,
+          'fetchChats',
+          false,
+        );
+        return this.normalizeList(json);
+      } catch {
+        throw findErr;
+      }
+    }
   }
 
   /** Mensajes de un chat concreto (paginado). */
@@ -290,16 +314,17 @@ export class EvolutionService {
     page = 1,
     offset = 50,
   ): Promise<{ records: any[]; total?: number; pages?: number; currentPage?: number }> {
+    const instance = this.instancePath(cfg.instance);
     const { json } = await this.postWithKeyFallback(
       cfg,
-      `/chat/findMessages/${cfg.instance}`,
+      `/chat/findMessages/${instance}`,
       {
         where: { key: { remoteJid } },
         page,
         offset,
       },
       'findMessages',
-      true,
+      false,
     );
     const messages = json?.messages ?? json;
     if (messages?.records) {
@@ -383,6 +408,36 @@ export class EvolutionService {
           );
         }
         return { json, keySuffix: key.slice(-4) };
+      } catch (err: any) {
+        lastError = err instanceof Error ? err : new Error(String(err));
+        this.logger.warn(
+          `${label} key ...${key.slice(-4)} fallo en ${cfg.instance}: ${lastError.message}`,
+        );
+      }
+    }
+
+    throw lastError || new Error(`${label} fallo sin apikeys validas`);
+  }
+
+  private async getWithKeyFallback(
+    cfg: EvolutionConfig,
+    path: string,
+    label: string,
+    instanceKeysOnly: boolean,
+  ): Promise<any> {
+    const keys = instanceKeysOnly ? this.instanceKeys(cfg) : this.allKeys(cfg);
+    let lastError: Error | undefined;
+
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i];
+      try {
+        const json = await this.get(this.withKey(cfg, key), path);
+        if (i > 0) {
+          this.logger.log(
+            `${label} OK en ${cfg.instance} con apikey alternativa (intento ${i + 1})`,
+          );
+        }
+        return json;
       } catch (err: any) {
         lastError = err instanceof Error ? err : new Error(String(err));
         this.logger.warn(
