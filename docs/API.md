@@ -40,6 +40,20 @@ La mayoría de rutas requieren `Authorization: Bearer <JWT>`.
 | GET/PUT/DELETE | `/courses/:courseId/modules/:id` | CRUD módulo |
 | PUT | `/courses/:courseId/modules/reorder` | Reordenar |
 
+### Campos del módulo (create / update)
+
+| Campo | Tipo | Descripción |
+|-------|------|-------------|
+| `title` | string | Título |
+| `description` | string | Descripción |
+| `order` | number | Orden en el curso |
+| `status` | `draft` \| `published` \| `archived` | Estado |
+| `content` | URL (opcional) | URL del **video** del módulo (UI: "URL del video") |
+| `activityUrl` | URL (opcional) | URL de **actividad** externa (Wordwall, Google Forms, …) |
+| `resources` | array | PDFs del módulo (`name`, `url`, `size?`) |
+
+En **update**, enviar `content: ""` o `activityUrl: ""` elimina ese enlace del módulo.
+
 ## Estudiantes
 
 | Método | Ruta | Notas |
@@ -60,9 +74,35 @@ La mayoría de rutas requieren `Authorization: Bearer <JWT>`.
 | GET | `/users/search/:email` | Búsqueda por email |
 | GET/PUT | `/users/:id` | Detalle / actualización |
 
+## Agente Nedi (WhatsApp / Evolution)
+
+| Método | Ruta | Auth | Descripción |
+|--------|------|------|-------------|
+| POST | `/agent/webhook` | — | Webhook Evolution (mensajes entrantes) |
+| POST | `/agent/evolution/connect` | JWT | Conectar WhatsApp (QR) + configurar webhook |
+| GET | `/agent/evolution/status` | JWT | Estado de conexión |
+| GET | `/agent/evolution/health` | JWT | Diagnóstico Evolution |
+| POST | `/agent/evolution/logout` | JWT | Desvincular número |
+
+## Admin — conversaciones y logs del agente
+
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| GET | `/admin/agent/conversations/instructors` | Instructores con Evolution |
+| GET | `/admin/agent/conversations/:instructorId/chats` | Chats de un instructor |
+| GET | `/admin/agent/conversations/:instructorId/messages` | Mensajes de un chat |
+| GET | `/admin/agent/logs` | Log de actividad del agente |
+| GET | `/admin/agent/logs/file` | Log en archivo |
+
+## Admin — notificaciones Meta
+
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| GET/PUT | `/admin/notification-config` | Config recordatorios WhatsApp (Meta) |
+
 ## Progreso de módulos
 
-Usado por integraciones (n8n, etc.). Requiere JWT.
+Requiere JWT.
 
 `POST /module-progress/complete`
 
@@ -74,8 +114,6 @@ Usado por integraciones (n8n, etc.). Requiere JWT.
   "timeSpentMinutes": 5
 }
 ```
-
-Respuesta: `{ "success": true, "message": "...", "progress": { ... } }`.
 
 ## Uploads (S3)
 
@@ -89,18 +127,9 @@ Respuesta: `{ "success": true, "message": "...", "progress": { ... } }`.
 | GET | `/uploads/course/:courseId/:fileKey` |
 | GET | `/uploads/module/:courseId/:moduleId/:fileKey` |
 
-## Workflows y credenciales n8n
+## Recordatorios WhatsApp (Meta)
 
-| Método | Ruta |
-|--------|------|
-| CRUD | `/workflows`, `/workflows/:id` |
-| POST | `/workflows/:id/execute` |
-| PUT | `/workflows/:id/activate`, `/deactivate` |
-| CRUD | `/n8n-credentials` (+ `by-name/:name`, `by-n8n-id/:id_n8n`) |
-
-## Recordatorios WhatsApp
-
-Requieren `REMINDER_INTERNAL_API_KEY` en cabecera o body según implementación del controlador.
+Requieren `REMINDER_INTERNAL_API_KEY` en cabecera o body.
 
 | Método | Ruta |
 |--------|------|
@@ -110,7 +139,7 @@ Requieren `REMINDER_INTERNAL_API_KEY` en cabecera o body según implementación 
 
 ## Paginación
 
-Endpoints que devuelven listas paginadas usan cursor opaco:
+Endpoints paginados usan cursor opaco:
 
 - Query: `cursor` (opcional), `sortOrder` (`asc` | `desc`)
 - Respuesta: `data`, `pagination: { limit, hasNext, nextCursor }`

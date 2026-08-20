@@ -9,6 +9,7 @@ import { AgentStateService } from './agent-state.service';
 import { AgentsService, RuntimeContext } from './agents.service';
 import { ParsedIncomingMessage, TenantContext } from './agent.types';
 import { AgentActivityLogService } from '../../core/logging/agent-activity-log.service';
+import { StudentService } from '../student.service';
 
 /**
  * Orquestador del agente Nedi. Punto de entrada del webhook de Evolution:
@@ -33,6 +34,7 @@ export class AgentOrchestratorService {
     private readonly agentState: AgentStateService,
     private readonly agents: AgentsService,
     private readonly activityLog: AgentActivityLogService,
+    private readonly studentService: StudentService,
   ) {}
 
   /** Procesa el payload del webhook (se invoca de forma asincrona). */
@@ -69,21 +71,7 @@ export class AgentOrchestratorService {
     this.warnIfInstructorSelfChat(tenant, parsed.phoneNumber);
 
     if (parsed.lidOnly) {
-      const resolvedPhone = await this.evolution.resolvePhoneFromLidJid(
-        tenant.evolution,
-        parsed.replyToJid,
-      );
-      if (resolvedPhone) {
-        parsed.phoneNumber = resolvedPhone;
-        this.logger.log(
-          `[${parsed.instance}] Telefono resuelto desde LID: ${parsed.replyToJid} -> ${resolvedPhone}`,
-        );
-      } else {
-        this.logger.warn(
-          `[${parsed.instance}] No se pudo resolver telefono para LID ${parsed.replyToJid}; ` +
-            'matriculas/progreso pueden no coincidir hasta actualizar Evolution o recibir remoteJidAlt en el webhook',
-        );
-      }
+      await this.resolveLidPhone(tenant, parsed);
     }
 
     // Convertir media a texto (audio/imagen)
@@ -272,6 +260,17 @@ export class AgentOrchestratorService {
         presenceDelayMs,
         { linkPreview: false },
       );
+      if (parsed.lidOnly && result.resolvedRecipientPhone) {
+        await this.persistLidPhoneMapping(
+          tenant.evolution.instance,
+          parsed.replyToJid,
+          result.resolvedRecipientPhone,
+          'respuesta sendText',
+        );
+        if (!parsed.phoneNumber || parsed.phoneNumber.length < 10) {
+          parsed.phoneNumber = result.resolvedRecipientPhone;
+        }
+      }
       this.logger.log(
         `[${tenant.evolution.instance}] Respuesta enviada desde linea ${instructorLine} hacia ${result.numberUsed} (${reply.length} chars, msgId=${result.messageId || '?'})`,
       );
@@ -381,6 +380,7 @@ export class AgentOrchestratorService {
     const instance = root?.instance || payload?.instance || data?.instance || '';
     const apikey = root?.apikey || payload?.apikey || data?.apikey || '';
     const messageType = data?.messageType || '';
+    const pushName: string = data?.pushName || key?.pushName || root?.pushName || '';
 
     const msg = data?.message || {};
     let text = '';
@@ -396,6 +396,7 @@ export class AgentOrchestratorService {
       replyToJid,
       senderPn: senderPn || undefined,
       lidOnly: lidOnly || undefined,
+      pushName: pushName || undefined,
       message: text,
       messageType: messageType || (msg.conversation ? 'conversation' : ''),
       instance,
@@ -403,5 +404,59 @@ export class AgentOrchestratorService {
       messageId: key.id,
       raw: data,
     };
+  }
+
+  private async persistLidPhoneMapping(
+    instance: string,
+    lidJid: string,
+    phoneNumber: string,
+    source: string,
+  ): Promise<void> {
+    const phone = phoneNumber.replace(/[^0-9]/g, '');
+    if (!phone || phone.length < 10) return;
+    this.evolution.rememberLidPhone(instance, lidJid, phone);
+    await this.agentState.saveLidPhoneMapping(instance, lidJid, phone);
+    this.logger.log(`[${instance}] Mapeo LID guardado (${source}): ${lidJid} -> ${phone}`);
+  }
+
+  private async resolveLidPhone(tenant: TenantContext, parsed: ParsedIncomingMessage): Promise<void> {
+    const lidJid = parsed.replyToJid;
+    const instance = parsed.instance;
+
+    let resolved =
+      this.evolution.getCachedLidPhone(instance, lidJid) ||
+      (await this.agentState.getLidPhoneMapping(instance, lidJid));
+
+    if (resolved) {
+      this.evolution.rememberLidPhone(instance, lidJid, resolved);
+    }
+
+    if (!resolved) {
+      resolved = await this.evolution.resolvePhoneFromLidJid(tenant.evolution, lidJid);
+    }
+
+    if (!resolved && parsed.pushName) {
+      resolved = await this.studentService.findPhoneByNameForInstructor(
+        tenant.instructor.id,
+        parsed.pushName,
+      );
+      if (resolved) {
+        this.logger.log(
+          `[${instance}] LID ${lidJid} -> telefono ${resolved} (pushName "${parsed.pushName}")`,
+        );
+      }
+    }
+
+    if (resolved) {
+      parsed.phoneNumber = resolved;
+      await this.persistLidPhoneMapping(instance, lidJid, resolved, 'resolucion entrante');
+      this.logger.log(`[${instance}] Telefono resuelto desde LID: ${lidJid} -> ${resolved}`);
+    } else {
+      this.logger.warn(
+        `[${instance}] No se pudo resolver telefono para LID ${lidJid}` +
+          (parsed.pushName ? ` (pushName="${parsed.pushName}")` : '') +
+          '; matriculas/progreso pueden no coincidir hasta el siguiente mensaje o actualizar Evolution',
+      );
+    }
   }
 }

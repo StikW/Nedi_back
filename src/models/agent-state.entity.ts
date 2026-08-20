@@ -60,3 +60,13 @@ export interface AgentState {
 
 const _tablePrefix = process.env.DYNAMODB_TABLE_PREFIX || '';
 export const AGENT_STATE_TABLE = _tablePrefix + 'AgentState';
+
+/** Mapeo persistente LID → teléfono real (item en tabla AgentState). */
+export interface LidPhoneMapping {
+  id: string;
+  itemType: 'lid_phone_map';
+  instance: string;
+  lidJid: string;
+  mappedPhoneNumber: string;
+  updatedAt: string;
+}

@@ -15,6 +15,28 @@ export class EvolutionService {
   /** Cache instance:lidJid -> telefono E.164 sin + */
   private readonly lidPhoneCache = new Map<string, string>();
 
+  getCachedLidPhone(instance: string, lidJid: string): string | null {
+    return this.lidPhoneCache.get(`${instance}:${lidJid}`) || null;
+  }
+
+  rememberLidPhone(instance: string, lidJid: string, phoneNumber: string): void {
+    const phone = phoneNumber.replace(/[^0-9]/g, '');
+    if (phone.length >= 10) {
+      this.lidPhoneCache.set(`${instance}:${lidJid}`, phone);
+    }
+  }
+
+  private extractPhoneFromJidAlt(jid: string): string | null {
+    if (!jid?.includes('@s.whatsapp.net')) return null;
+    const phone = jid.split('@')[0]?.replace(/[^0-9]/g, '') || '';
+    if (phone.length >= 10 && phone.length <= 15) return phone;
+    return null;
+  }
+
+  private extractPhoneFromRecord(record: any): string | null {
+    return this.extractPhoneFromJidAlt(record?.key?.remoteJidAlt || '');
+  }
+
   private headers(apiKey: string): Record<string, string> {
     return {
       'Content-Type': 'application/json',
@@ -156,7 +178,7 @@ export class EvolutionService {
     text: string,
     presenceDelayMs = 1200,
     options: { linkPreview?: boolean } = {},
-  ): Promise<{ messageId?: string; numberUsed: string; keyUsed: string }> {
+  ): Promise<{ messageId?: string; numberUsed: string; keyUsed: string; resolvedRecipientPhone?: string }> {
     await this.assertInstanceOpen(cfg);
 
     const targets = Array.isArray(to) ? to : this.outboundNumberVariants(to);
@@ -187,8 +209,14 @@ export class EvolutionService {
           true,
         );
         const messageId = json?.key?.id || json?.message?.key?.id;
+        const resolvedRecipientPhone =
+          this.extractPhoneFromJidAlt(json?.key?.remoteJid || '') || undefined;
+        if (resolvedRecipientPhone && number.endsWith('@lid')) {
+          this.rememberLidPhone(cfg.instance, number, resolvedRecipientPhone);
+        }
         this.logger.log(
-          `sendText OK instance=${cfg.instance} to=${number} msgId=${messageId || '?'} key=...${keySuffix}`,
+          `sendText OK instance=${cfg.instance} to=${number} msgId=${messageId || '?'} key=...${keySuffix}` +
+            (resolvedRecipientPhone ? ` resolvedPhone=${resolvedRecipientPhone}` : ''),
         );
         this.logger.debug(
           `sendText respuesta ${cfg.instance}: ${JSON.stringify(json).slice(0, 400)}`,
@@ -197,6 +225,7 @@ export class EvolutionService {
           messageId,
           numberUsed: number,
           keyUsed: keySuffix,
+          resolvedRecipientPhone,
         };
       } catch (err: any) {
         lastError = err instanceof Error ? err : new Error(String(err));
@@ -369,17 +398,40 @@ export class EvolutionService {
     if (cached) return cached;
 
     try {
-      const { records } = await this.findMessages(cfg, lidJid, 1, 80);
-      for (const record of records) {
-        const alt: string = record?.key?.remoteJidAlt || '';
-        if (!alt.includes('@s.whatsapp.net')) continue;
-        const phone = alt.split('@')[0]?.replace(/[^0-9]/g, '') || '';
-        if (phone.length >= 10 && phone.length <= 15) {
-          this.lidPhoneCache.set(cacheKey, phone);
-          this.logger.log(`LID ${lidJid} -> telefono ${phone} (desde historial Evolution)`);
-          return phone;
+      const chats = await this.findChats(cfg);
+      const chat = chats.find((c) => c?.remoteJid === lidJid || c?.id === lidJid);
+      if (chat) {
+        const fromLast = this.extractPhoneFromJidAlt(chat?.lastMessage?.key?.remoteJidAlt || '');
+        if (fromLast) {
+          this.lidPhoneCache.set(cacheKey, fromLast);
+          this.logger.log(`LID ${lidJid} -> telefono ${fromLast} (desde findChats)`);
+          return fromLast;
         }
       }
+    } catch (err: any) {
+      this.logger.debug(
+        `findChats no ayudo a resolver ${lidJid} en ${cfg.instance}: ${err?.message || err}`,
+      );
+    }
+
+    try {
+      for (let page = 1; page <= 15; page++) {
+        const { records, pages } = await this.findMessages(cfg, lidJid, page, 50);
+        for (const record of records) {
+          const phone = this.extractPhoneFromRecord(record);
+          if (phone) {
+            this.lidPhoneCache.set(cacheKey, phone);
+            this.logger.log(
+              `LID ${lidJid} -> telefono ${phone} (historial Evolution, pagina ${page})`,
+            );
+            return phone;
+          }
+        }
+        if (!records.length || (pages && page >= pages)) break;
+      }
+      this.logger.warn(
+        `LID ${lidJid}: sin remoteJidAlt en historial (${cfg.instance}, hasta 15 paginas)`,
+      );
     } catch (err: any) {
       this.logger.warn(
         `No se pudo resolver telefono para ${lidJid} en ${cfg.instance}: ${err?.message || err}`,

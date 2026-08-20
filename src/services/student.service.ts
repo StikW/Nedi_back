@@ -520,6 +520,60 @@ export class StudentService {
   }
 
   /**
+   * Fallback para contactos @lid: busca un estudiante del instructor cuyo nombre
+   * coincida con el pushName de WhatsApp y devuelve su telefono.
+   */
+  async findPhoneByNameForInstructor(instructorId: string, pushName: string): Promise<string | null> {
+    const normalizedSearch = this.normalizePersonName(pushName);
+    if (!normalizedSearch || normalizedSearch.length < 2) return null;
+
+    const matches: Student[] = [];
+    let lastKey: Record<string, unknown> | undefined;
+
+    do {
+      const result = await this.dynamoClient.send(
+        new ScanCommand({
+          TableName: STUDENTS_TABLE,
+          FilterExpression: 'instructorId = :iid',
+          ExpressionAttributeValues: { ':iid': instructorId },
+          ExclusiveStartKey: lastKey,
+        }),
+      );
+
+      for (const item of result.Items || []) {
+        const student = item as Student;
+        const normalizedName = this.normalizePersonName(student.name || '');
+        if (
+          normalizedName === normalizedSearch ||
+          normalizedName.includes(normalizedSearch) ||
+          normalizedSearch.includes(normalizedName)
+        ) {
+          matches.push(student);
+        }
+      }
+      lastKey = result.LastEvaluatedKey;
+    } while (lastKey);
+
+    if (matches.length === 0) return null;
+
+    const phones = [...new Set(matches.map((s) => this.normalizePhoneNumber(s.phoneNumber)))];
+    if (phones.length === 1) return phones[0];
+
+    const exact = matches.filter((s) => this.normalizePersonName(s.name) === normalizedSearch);
+    if (exact.length === 1) return this.normalizePhoneNumber(exact[0].phoneNumber);
+
+    return null;
+  }
+
+  private normalizePersonName(name: string): string {
+    return name
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim();
+  }
+
+  /**
    * Buscar un estudiante por número de teléfono y curso específico.
    * Usa el GSI `phoneNumber-index` (un Scan con Limit falla: el límite se aplica
    * antes del filtro y puede no devolver coincidencias aunque existan).

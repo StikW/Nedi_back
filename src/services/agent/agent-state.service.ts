@@ -5,7 +5,7 @@ import {
   PutCommand,
   UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
-import { AgentState, AGENT_STATE_TABLE } from '../../models/agent-state.entity';
+import { AgentState, AGENT_STATE_TABLE, LidPhoneMapping } from '../../models/agent-state.entity';
 import {
   CourseModuleQuestions,
   COURSE_MODULE_QUESTIONS_TABLE,
@@ -34,6 +34,45 @@ export class AgentStateService {
 
   private stateId(instance: string, phoneNumber: string): string {
     return `${instance}#${phoneNumber}`;
+  }
+
+  private lidMapId(instance: string, lidJid: string): string {
+    const lidDigits = (lidJid || '').split('@')[0]?.replace(/[^0-9]/g, '') || lidJid;
+    return `${instance}#lid:${lidDigits}`;
+  }
+
+  /** Telefono real previamente asociado a un JID @lid (persiste entre reinicios). */
+  async getLidPhoneMapping(instance: string, lidJid: string): Promise<string | null> {
+    try {
+      const res = await this.dynamoClient.send(
+        new GetCommand({ TableName: AGENT_STATE_TABLE, Key: { id: this.lidMapId(instance, lidJid) } }),
+      );
+      const phone = (res.Item as LidPhoneMapping | undefined)?.mappedPhoneNumber;
+      return phone?.replace(/[^0-9]/g, '') || null;
+    } catch (err: any) {
+      this.logger.warn(`getLidPhoneMapping fallo: ${err?.message || err}`);
+      return null;
+    }
+  }
+
+  async saveLidPhoneMapping(instance: string, lidJid: string, phoneNumber: string): Promise<void> {
+    const mappedPhoneNumber = phoneNumber.replace(/[^0-9]/g, '');
+    if (!mappedPhoneNumber) return;
+
+    const item: LidPhoneMapping = {
+      id: this.lidMapId(instance, lidJid),
+      itemType: 'lid_phone_map',
+      instance,
+      lidJid,
+      mappedPhoneNumber,
+      updatedAt: new Date().toISOString(),
+    };
+
+    try {
+      await this.dynamoClient.send(new PutCommand({ TableName: AGENT_STATE_TABLE, Item: item }));
+    } catch (err: any) {
+      this.logger.warn(`saveLidPhoneMapping fallo: ${err?.message || err}`);
+    }
   }
 
   // ===== Estado conversacional =====

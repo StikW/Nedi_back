@@ -62,6 +62,8 @@ export interface ParsedIncomingMessage {
   senderPn?: string;
   /** True cuando solo hay JID @lid (sin telefono real en alt/senderPn) */
   lidOnly?: boolean;
+  /** pushName del contacto (WhatsApp) */
+  pushName?: string;
   /** payload crudo (para descargar media) */
   raw: any;
 }
