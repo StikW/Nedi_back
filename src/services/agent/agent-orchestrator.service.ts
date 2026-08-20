@@ -8,6 +8,7 @@ import { MessageBufferService } from './message-buffer.service';
 import { AgentStateService } from './agent-state.service';
 import { AgentsService, RuntimeContext } from './agents.service';
 import { ParsedIncomingMessage, TenantContext } from './agent.types';
+import { NO_ACTIVE_COURSES_MESSAGE } from './prompts';
 import { AgentActivityLogService } from '../../core/logging/agent-activity-log.service';
 import { StudentService } from '../student.service';
 
@@ -230,12 +231,101 @@ export class AgentOrchestratorService {
     }
 
     const presenceDelayMs = this.configService.get<number>('AGENT_TYPING_DELAY_MS') ?? 2000;
-    await this.send(tenant, parsed, reply, presenceDelayMs);
+    const phoneBeforeSend = phoneNumber;
+    const sendResult = await this.send(tenant, parsed, reply, presenceDelayMs);
+
+    const corrected = await this.retryWithResolvedLidPhone(
+      tenant,
+      parsed,
+      message,
+      phoneBeforeSend,
+      sendResult.resolvedRecipientPhone,
+      reply,
+      sessionExpired,
+      presenceDelayMs,
+    );
+    if (corrected) return;
+
     this.memory.append(instance, phoneNumber, message, reply);
-    state = await this.agentState.upsertState(instance, phoneNumber, tenant.instructor.id, {
+    await this.agentState.upsertState(instance, phoneNumber, tenant.instructor.id, {
       lastSessionAt: new Date().toISOString(),
       ...(sessionExpired ? { nediIntroShown: true } : {}),
     });
+  }
+
+  /** Si sendText revelo el telefono real del @lid, re-ejecuta el agente y envia la respuesta correcta. */
+  private async retryWithResolvedLidPhone(
+    tenant: TenantContext,
+    parsed: ParsedIncomingMessage,
+    message: string,
+    phoneBeforeSend: string,
+    resolvedPhone: string | undefined,
+    previousReply: string,
+    sessionExpired: boolean,
+    presenceDelayMs: number,
+  ): Promise<boolean> {
+    if (!parsed.lidOnly || !resolvedPhone || resolvedPhone === phoneBeforeSend) return false;
+    if (previousReply !== NO_ACTIVE_COURSES_MESSAGE) return false;
+
+    const instance = tenant.evolution.instance;
+    parsed.phoneNumber = resolvedPhone;
+    parsed.recipientJid = `${resolvedPhone}@s.whatsapp.net`;
+
+    this.logger.log(
+      `[${instance}] Telefono corregido tras sendText (${phoneBeforeSend} -> ${resolvedPhone}); reintentando agente`,
+    );
+
+    let state = await this.agentState.getState(instance, resolvedPhone);
+    if (!state) {
+      state = await this.agentState.upsertState(instance, resolvedPhone, tenant.instructor.id, {
+        flujo: 'conversacion',
+      });
+    }
+
+    const ctx: RuntimeContext = {
+      tenant,
+      phoneNumber: resolvedPhone,
+      recipientJid: parsed.recipientJid,
+      state,
+      message,
+      history: this.memory.get(instance, resolvedPhone),
+    };
+
+    let correctedReply = '';
+    try {
+      if (sessionExpired) {
+        correctedReply = await this.agents.runConversacionInicial(ctx);
+      } else {
+        const route = await this.agents.classify(ctx);
+        switch (route) {
+          case 'AI_Preguntas':
+            correctedReply = await this.agents.runPreguntas(ctx);
+            break;
+          case 'AI_Respuestas':
+            correctedReply = await this.agents.runRespuestas(ctx);
+            break;
+          case 'AI_Explicar':
+            correctedReply = await this.agents.runExplicar(ctx);
+            break;
+          default:
+            correctedReply = await this.agents.runConversacion(ctx);
+            break;
+        }
+      }
+    } catch (err: any) {
+      this.logger.warn(`Reintento LID fallo: ${err?.message || err}`);
+      return false;
+    }
+
+    if (!correctedReply?.trim() || correctedReply === previousReply) return false;
+
+    await this.send(tenant, parsed, correctedReply, presenceDelayMs);
+    this.memory.append(instance, resolvedPhone, message, correctedReply);
+    await this.agentState.upsertState(instance, resolvedPhone, tenant.instructor.id, {
+      lastSessionAt: new Date().toISOString(),
+      ...(sessionExpired ? { nediIntroShown: true } : {}),
+    });
+    return true;
   }
 
   /** Envia la respuesta de texto; la burbuja "escribiendo..." se muestra justo antes. */
@@ -244,7 +334,7 @@ export class AgentOrchestratorService {
     parsed: ParsedIncomingMessage,
     reply: string,
     presenceDelayMs: number,
-  ): Promise<void> {
+  ): Promise<{ resolvedRecipientPhone?: string }> {
     const replyTargets = this.evolution.buildReplyTargets(parsed);
     const instructorLine =
       tenant.liveOwnerNumber ||
@@ -267,8 +357,10 @@ export class AgentOrchestratorService {
           result.resolvedRecipientPhone,
           'respuesta sendText',
         );
-        if (!parsed.phoneNumber || parsed.phoneNumber.length < 10) {
+        const lidDigits = parsed.replyToJid.split('@')[0]?.replace(/[^0-9]/g, '') || '';
+        if (parsed.phoneNumber === lidDigits || parsed.replyToJid.endsWith('@lid')) {
           parsed.phoneNumber = result.resolvedRecipientPhone;
+          parsed.recipientJid = `${result.resolvedRecipientPhone}@s.whatsapp.net`;
         }
       }
       this.logger.log(
@@ -283,6 +375,7 @@ export class AgentOrchestratorService {
         messagePreview: reply.slice(0, 160),
         detail: `to=${result.numberUsed} msgId=${result.messageId || '?'}`,
       });
+      return { resolvedRecipientPhone: result.resolvedRecipientPhone };
     } catch (err: any) {
       this.logger.error(
         `[${tenant.evolution.instance}] No se pudo enviar desde linea ${instructorLine} hacia ${parsed.replyToJid}: ${err?.message || err}`,
@@ -296,6 +389,7 @@ export class AgentOrchestratorService {
         messagePreview: reply.slice(0, 160),
         detail: `to=${parsed.replyToJid} ${err?.message || String(err)}`,
       });
+      return {};
     }
   }
 

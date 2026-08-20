@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Reinicia el backend Nest en el servidor (PM2).
-# Usa `npm start` (= nest start, sin build previo).
+# Compila dist/ y arranca con node dist/main (produccion).
 # Uso: ./scripts/deploy-pm2.sh [nombre-proceso-pm2]
 
 set -euo pipefail
@@ -10,15 +10,24 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 cd "$ROOT"
 
-echo "==> Instalando dependencias (incluye @nestjs/cli para nest start)..."
+echo "==> Instalando dependencias..."
 npm install
+
+echo "==> Compilando (dist/main.js)..."
+rm -rf dist tsconfig.tsbuildinfo
+npm run build
+
+if [ ! -f dist/main.js ]; then
+  echo "ERROR: dist/main.js no existe tras el build. Revisa errores de TypeScript arriba."
+  exit 1
+fi
 
 if pm2 describe "$APP_NAME" >/dev/null 2>&1; then
   echo "==> Reiniciando PM2: $APP_NAME"
   pm2 restart "$APP_NAME" --update-env
 else
   echo "==> Iniciando PM2: $APP_NAME"
-  pm2 start npm --name "$APP_NAME" --cwd "$ROOT" -- start
+  pm2 start npm --name "$APP_NAME" --cwd "$ROOT" -- run start:prod
 fi
 
 pm2 save
