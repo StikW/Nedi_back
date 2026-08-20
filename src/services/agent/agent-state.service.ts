@@ -78,6 +78,9 @@ export class AgentStateService {
       awaitingPostAnswerAction: 'awaitingPostAnswerAction' in patch
         ? patch.awaitingPostAnswerAction
         : current?.awaitingPostAnswerAction,
+      awaitingActivityConfirmation: 'awaitingActivityConfirmation' in patch
+        ? patch.awaitingActivityConfirmation
+        : current?.awaitingActivityConfirmation,
       awaitingModuleStartConfirmation: 'awaitingModuleStartConfirmation' in patch
         ? patch.awaitingModuleStartConfirmation
         : current?.awaitingModuleStartConfirmation,

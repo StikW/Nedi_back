@@ -14,6 +14,8 @@ export interface CourseModule {
   order: number;
   /** Module content (URL to video, document, etc.) */
   content: string;
+  /** Optional URL to an external module activity (Wordwall, Google Forms, etc.) */
+  activityUrl?: string;
   /** Module status */
   status: ModuleStatus;
   /** Module resources (files, links, etc.) */

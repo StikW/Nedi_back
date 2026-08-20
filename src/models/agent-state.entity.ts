@@ -36,6 +36,11 @@ export interface AgentState {
    */
   awaitingPostAnswerAction?: boolean;
   /**
+   * Tras enviar el enlace de actividad del modulo, espera confirmacion del estudiante
+   * antes de continuar con el video o la primera pregunta.
+   */
+  awaitingActivityConfirmation?: boolean;
+  /**
    * Tras enviar el video intro del modulo, espera confirmacion del estudiante
    * antes de mandar el audio-resumen y la primera pregunta.
    */

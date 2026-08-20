@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsEnum, IsArray, IsOptional, IsUrl, Min, ValidateNested } from 'class-validator';
+import { IsString, IsNumber, IsEnum, IsArray, IsOptional, IsUrl, Min, ValidateNested, ValidateIf } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ModuleStatus } from './course-module.entity';
 
@@ -20,6 +20,11 @@ export class CreateCourseModuleDto {
   @IsString()
   @IsUrl()
   content: string;
+
+  @IsOptional()
+  @IsString()
+  @IsUrl()
+  activityUrl?: string;
 
   @IsEnum(ModuleStatus)
   status: ModuleStatus;
@@ -49,9 +54,16 @@ export class UpdateCourseModuleDto {
   order?: number;
 
   @IsOptional()
+  @ValidateIf((_o, value) => value !== '' && value != null)
   @IsString()
   @IsUrl()
   content?: string;
+
+  @IsOptional()
+  @ValidateIf((_o, value) => value !== '' && value != null)
+  @IsString()
+  @IsUrl()
+  activityUrl?: string;
 
   @IsOptional()
   @IsEnum(ModuleStatus)

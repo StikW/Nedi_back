@@ -12,6 +12,8 @@ import { EvolutionConfig } from './agent.types';
 export class EvolutionService {
   private readonly logger = new Logger(EvolutionService.name);
   private readonly requestTimeoutMs = 12_000;
+  /** Cache instance:lidJid -> telefono E.164 sin + */
+  private readonly lidPhoneCache = new Map<string, string>();
 
   private headers(apiKey: string): Record<string, string> {
     return {
@@ -45,7 +47,11 @@ export class EvolutionService {
 
   private normalizeOutboundNumber(to: string): string {
     if (!to?.trim()) return to;
-    const userPart = to.split('@')[0] || to;
+    const trimmed = to.trim();
+    if (trimmed.endsWith('@lid') || trimmed.includes('@s.whatsapp.net')) {
+      return trimmed;
+    }
+    const userPart = trimmed.split('@')[0] || trimmed;
     const digits = userPart.replace(/[^0-9]/g, '');
     if (!digits) {
       throw new Error(`Numero de destino invalido: "${to}"`);
@@ -76,7 +82,7 @@ export class EvolutionService {
     return [...new Set([digits, `${digits}@s.whatsapp.net`])];
   }
 
-  /** JIDs a probar al responder. Prioriza @s.whatsapp.net (como n8n); @lid solo sin teléfono real. */
+  /** JIDs a probar al responder. Prioriza @s.whatsapp.net; contactos solo @lid usan el JID completo. */
   buildReplyTargets(input: {
     replyToJid: string;
     remoteJid: string;
@@ -84,7 +90,15 @@ export class EvolutionService {
     recipientJid: string;
     phoneNumber: string;
     senderPn?: string;
+    lidOnly?: boolean;
   }): string[] {
+    if (input.lidOnly) {
+      const lidJids = [input.replyToJid, input.recipientJid, input.remoteJidAlt, input.remoteJid].filter(
+        (jid) => jid?.endsWith('@lid'),
+      );
+      return [...new Set(lidJids)];
+    }
+
     const phoneDigits = (input.phoneNumber || '').replace(/[^0-9]/g, '');
     const senderDigits = (input.senderPn || '').replace(/[^0-9]/g, '');
 
@@ -99,10 +113,10 @@ export class EvolutionService {
     if (whatsappJid) {
       primary.push(whatsappJid);
     }
-    if (phoneDigits.length >= 10) {
+    if (phoneDigits.length >= 10 && phoneDigits.length <= 15) {
       primary.push(phoneDigits, `${phoneDigits}@s.whatsapp.net`);
     }
-    if (senderDigits.length >= 10 && senderDigits !== phoneDigits) {
+    if (senderDigits.length >= 10 && senderDigits.length <= 15 && senderDigits !== phoneDigits) {
       primary.push(`${senderDigits}@s.whatsapp.net`, senderDigits);
     }
 
@@ -149,10 +163,6 @@ export class EvolutionService {
     let lastError: Error | undefined;
 
     for (const number of targets) {
-      if (number.includes('@lid') && targets.some((t) => !t.includes('@lid'))) {
-        continue;
-      }
-
       try {
         await this.sendPresence(cfg, number, presenceDelayMs);
       } catch (err: any) {
@@ -345,6 +355,37 @@ export class EvolutionService {
       };
     }
     return { records: this.normalizeList(json) };
+  }
+
+  /**
+   * Cuando el webhook solo trae @lid, busca en el historial de Evolution un mensaje
+   * entrante con `key.remoteJidAlt` (@s.whatsapp.net) para obtener el telefono real.
+   */
+  async resolvePhoneFromLidJid(cfg: EvolutionConfig, lidJid: string): Promise<string | null> {
+    if (!lidJid?.endsWith('@lid')) return null;
+
+    const cacheKey = `${cfg.instance}:${lidJid}`;
+    const cached = this.lidPhoneCache.get(cacheKey);
+    if (cached) return cached;
+
+    try {
+      const { records } = await this.findMessages(cfg, lidJid, 1, 80);
+      for (const record of records) {
+        const alt: string = record?.key?.remoteJidAlt || '';
+        if (!alt.includes('@s.whatsapp.net')) continue;
+        const phone = alt.split('@')[0]?.replace(/[^0-9]/g, '') || '';
+        if (phone.length >= 10 && phone.length <= 15) {
+          this.lidPhoneCache.set(cacheKey, phone);
+          this.logger.log(`LID ${lidJid} -> telefono ${phone} (desde historial Evolution)`);
+          return phone;
+        }
+      }
+    } catch (err: any) {
+      this.logger.warn(
+        `No se pudo resolver telefono para ${lidJid} en ${cfg.instance}: ${err?.message || err}`,
+      );
+    }
+    return null;
   }
 
   private normalizeList(json: any): any[] {

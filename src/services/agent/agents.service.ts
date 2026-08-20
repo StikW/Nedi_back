@@ -124,6 +124,10 @@ export class AgentsService {
       return 'AI_Preguntas';
     }
 
+    if (ctx.state.awaitingActivityConfirmation && this.wantsToStartModuleQuestions(ctx.message)) {
+      return 'AI_Preguntas';
+    }
+
     if (ctx.state.awaitingModuleStartConfirmation && this.wantsToStartModuleQuestions(ctx.message)) {
       return 'AI_Preguntas';
     }
@@ -137,6 +141,9 @@ export class AgentsService {
       `Estado de flujo actual: ${ctx.state.flujo}`,
       ctx.state.awaitingPostAnswerAction
         ? 'El estudiante acaba de recibir retroalimentación de su respuesta y debe elegir si quiere más explicación o la siguiente pregunta. No trates su mensaje como una nueva respuesta a la pregunta anterior.'
+        : '',
+      ctx.state.awaitingActivityConfirmation
+        ? 'Ya se envió la actividad del módulo. El estudiante debe confirmar (sí/listo/comenzar/empezar) para continuar con el video o la primera pregunta.'
         : '',
       ctx.state.awaitingModuleStartConfirmation
         ? 'Ya se envió el video intro del módulo. El estudiante debe confirmar (sí/listo/comenzar/empezar) para recibir la primera pregunta.'
@@ -261,6 +268,8 @@ export class AgentsService {
       moduleId = activeModule.id;
     }
 
+    const moduleChanged = Boolean(ctx.state.moduleId && ctx.state.moduleId !== moduleId);
+
     ctx.state = await this.agentState.upsertState(
       ctx.tenant.evolution.instance,
       ctx.phoneNumber,
@@ -271,6 +280,9 @@ export class AgentsService {
         offeredNextModuleId: undefined,
         awaitingPostAnswerAction: false,
         awaitingCourseStartConfirmation: false,
+        ...(moduleChanged
+          ? { awaitingActivityConfirmation: false, awaitingModuleStartConfirmation: false }
+          : {}),
       },
     );
 
@@ -318,6 +330,7 @@ export class AgentsService {
           offeredNextModuleId: nextModule?.id,
           introShownForModuleId: undefined,
           awaitingPostAnswerAction: false,
+          awaitingActivityConfirmation: false,
           awaitingModuleStartConfirmation: false,
           awaitingCourseStartConfirmation: false,
         },
@@ -329,51 +342,111 @@ export class AgentsService {
       return 'No hay preguntas disponibles en este momento.';
     }
 
-    if (current.index > 0 && ctx.state.awaitingModuleStartConfirmation) {
+    if (
+      current.index > 0 &&
+      (ctx.state.awaitingActivityConfirmation || ctx.state.awaitingModuleStartConfirmation)
+    ) {
       ctx.state = await this.agentState.upsertState(
         ctx.tenant.evolution.instance,
         ctx.phoneNumber,
         ctx.tenant.instructor.id,
-        { awaitingModuleStartConfirmation: false },
+        { awaitingActivityConfirmation: false, awaitingModuleStartConfirmation: false },
       );
     }
 
-    // En la pregunta 1 (índice 0): primero video intro (si hay), luego confirmación, después pregunta 1.
+    // En la pregunta 1 (índice 0): actividad (si hay) → video (si hay) → confirmación → pregunta 1.
+    // Se reenvía actividad/video mientras siga en P1 y aún no confirme (index sigue en 0).
     if (current.index === 0) {
       const confirmingStart = this.wantsToStartModuleQuestions(ctx.message);
+      const moduleForIntro = activeModule || (await this.courseModuleService.findOne(moduleId));
+      const hasActivity = Boolean((moduleForIntro?.activityUrl || '').trim());
+      const hasVideo = Boolean((moduleForIntro?.content || '').trim());
 
-      if (ctx.state.awaitingModuleStartConfirmation) {
-        if (!confirmingStart) {
+      if (hasActivity && ctx.state.awaitingActivityConfirmation) {
+        if (confirmingStart) {
+          ctx.state = await this.agentState.upsertState(
+            ctx.tenant.evolution.instance,
+            ctx.phoneNumber,
+            ctx.tenant.instructor.id,
+            { awaitingActivityConfirmation: false },
+          );
+          if (hasVideo) {
+            const introSent = await this.sendModuleIntro(ctx, moduleForIntro);
+            if (introSent) {
+              ctx.state = await this.agentState.upsertState(
+                ctx.tenant.evolution.instance,
+                ctx.phoneNumber,
+                ctx.tenant.instructor.id,
+                { awaitingModuleStartConfirmation: true },
+              );
+              return (
+                'Revisa el video con calma. Cuando lo hayas visto, escribe *sí*, *listo*, *comenzar* o *empezar* ' +
+                'y te envío la primera pregunta.'
+              );
+            }
+          }
+        } else {
+          await this.sendModuleActivity(ctx, moduleForIntro);
+          return (
+            'Este módulo incluye una *actividad*. Complétala con calma. ' +
+            'Cuando termines, escribe *sí*, *listo*, *comenzar* o *empezar* para continuar.'
+          );
+        }
+      } else if (hasVideo && ctx.state.awaitingModuleStartConfirmation) {
+        if (confirmingStart) {
+          ctx.state = await this.agentState.upsertState(
+            ctx.tenant.evolution.instance,
+            ctx.phoneNumber,
+            ctx.tenant.instructor.id,
+            { awaitingModuleStartConfirmation: false },
+          );
+        } else {
+          await this.sendModuleIntro(ctx, moduleForIntro);
           return (
             'Cuando termines de ver el video, escribe *sí*, *listo*, *comenzar* o *empezar* ' +
             'y te envío la primera pregunta.'
           );
         }
-
+      } else if (hasActivity) {
+        if (ctx.state.awaitingModuleStartConfirmation) {
+          ctx.state = await this.agentState.upsertState(
+            ctx.tenant.evolution.instance,
+            ctx.phoneNumber,
+            ctx.tenant.instructor.id,
+            { awaitingModuleStartConfirmation: false },
+          );
+        }
+        await this.sendModuleActivity(ctx, moduleForIntro);
         ctx.state = await this.agentState.upsertState(
           ctx.tenant.evolution.instance,
           ctx.phoneNumber,
           ctx.tenant.instructor.id,
-          { awaitingModuleStartConfirmation: false },
+          { awaitingActivityConfirmation: true },
         );
-      } else {
-        const moduleForIntro = activeModule || (await this.courseModuleService.findOne(moduleId));
+        return (
+          'Este módulo incluye una *actividad*. Complétala con calma. ' +
+          'Cuando termines, escribe *sí*, *listo*, *comenzar* o *empezar* para continuar.'
+        );
+      } else if (hasVideo) {
         const introSent = await this.sendModuleIntro(ctx, moduleForIntro);
-
-        ctx.state = await this.agentState.upsertState(
-          ctx.tenant.evolution.instance,
-          ctx.phoneNumber,
-          ctx.tenant.instructor.id,
-          { awaitingModuleStartConfirmation: true },
-        );
-
         if (introSent) {
+          ctx.state = await this.agentState.upsertState(
+            ctx.tenant.evolution.instance,
+            ctx.phoneNumber,
+            ctx.tenant.instructor.id,
+            { awaitingModuleStartConfirmation: true },
+          );
           return (
             'Revisa el video con calma. Cuando lo hayas visto, escribe *sí*, *listo*, *comenzar* o *empezar* ' +
             'y te envío la primera pregunta.'
           );
         }
-
+        if (!confirmingStart) {
+          return (
+            'Cuando estés listo para la primera pregunta, escribe *sí*, *listo*, *comenzar* o *empezar*.'
+          );
+        }
+      } else if (!confirmingStart) {
         return (
           'Cuando estés listo para la primera pregunta, escribe *sí*, *listo*, *comenzar* o *empezar*.'
         );
@@ -475,6 +548,32 @@ export class AgentsService {
   // ===================================================================
   //  Helpers
   // ===================================================================
+
+  /**
+   * Envía el enlace de actividad del módulo (Wordwall, Google Forms, etc.).
+   * Solo se usa en la primera pregunta del módulo cuando `activityUrl` está definido.
+   */
+  private async sendModuleActivity(ctx: RuntimeContext, module: CourseModule | null): Promise<boolean> {
+    if (!module) return false;
+    const rawUrl = (module.activityUrl || '').trim();
+    if (!rawUrl) return false;
+
+    try {
+      const activityUrl = this.normalizeExternalUrl(rawUrl);
+      await this.evolution.sendText(
+        ctx.tenant.evolution,
+        this.replyTo(ctx),
+        `${this.buildModuleActivityCaption(module)}\n\n${activityUrl}`,
+        1200,
+        { linkPreview: true },
+      );
+      this.logger.log(`Actividad de modulo enviada moduleId=${module.id}`);
+      return true;
+    } catch (err: any) {
+      this.logger.warn(`No se pudo enviar actividad del modulo ${module.id}: ${err?.message || err}`);
+      return false;
+    }
+  }
 
   /**
    * Intro del modulo (sub-workflow sendVideo en n8n):
@@ -597,6 +696,23 @@ export class AgentsService {
     }
 
     return lines.join('\n');
+  }
+
+  private buildModuleActivityCaption(module: CourseModule): string {
+    const title = module.title?.trim() || 'este módulo';
+    const orderLabel = module.order ? `Módulo ${module.order}` : 'Nuevo módulo';
+    const lines = [
+      `*Actividad — ${orderLabel}: ${title}*`,
+      '',
+      'Antes de las preguntas, completa esta actividad:',
+    ];
+    return lines.join('\n');
+  }
+
+  private normalizeExternalUrl(url: string): string {
+    const trimmed = url.trim();
+    if (/^https?:\/\//i.test(trimmed)) return trimmed;
+    return `https://${trimmed}`;
   }
 
   private shortModuleTeaser(description?: string): string {
@@ -952,7 +1068,11 @@ export class AgentsService {
   }
 
   private replyTo(ctx: RuntimeContext): string {
-    return ctx.phoneNumber || ctx.recipientJid || '';
+    const jid = ctx.recipientJid || '';
+    if (jid.endsWith('@lid') || jid.includes('@s.whatsapp.net')) {
+      return jid;
+    }
+    return ctx.phoneNumber || jid;
   }
 
   private ragTool(

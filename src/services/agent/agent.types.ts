@@ -60,6 +60,8 @@ export interface ParsedIncomingMessage {
   replyToJid: string;
   /** senderPn del webhook (telefono cuando solo llega @lid) */
   senderPn?: string;
+  /** True cuando solo hay JID @lid (sin telefono real en alt/senderPn) */
+  lidOnly?: boolean;
   /** payload crudo (para descargar media) */
   raw: any;
 }

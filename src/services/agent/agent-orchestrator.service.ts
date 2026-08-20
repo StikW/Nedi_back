@@ -68,6 +68,24 @@ export class AgentOrchestratorService {
 
     this.warnIfInstructorSelfChat(tenant, parsed.phoneNumber);
 
+    if (parsed.lidOnly) {
+      const resolvedPhone = await this.evolution.resolvePhoneFromLidJid(
+        tenant.evolution,
+        parsed.replyToJid,
+      );
+      if (resolvedPhone) {
+        parsed.phoneNumber = resolvedPhone;
+        this.logger.log(
+          `[${parsed.instance}] Telefono resuelto desde LID: ${parsed.replyToJid} -> ${resolvedPhone}`,
+        );
+      } else {
+        this.logger.warn(
+          `[${parsed.instance}] No se pudo resolver telefono para LID ${parsed.replyToJid}; ` +
+            'matriculas/progreso pueden no coincidir hasta actualizar Evolution o recibir remoteJidAlt en el webhook',
+        );
+      }
+    }
+
     // Convertir media a texto (audio/imagen)
     const text = await this.toText(tenant, parsed);
     if (!text || !text.trim()) {
@@ -155,6 +173,7 @@ export class AgentOrchestratorService {
       this.memory.clear(instance, phoneNumber);
       if (state) {
         state = await this.agentState.upsertState(instance, phoneNumber, state.instructorId, {
+          awaitingActivityConfirmation: false,
           awaitingModuleStartConfirmation: false,
           awaitingCourseStartConfirmation: false,
           introShownForModuleId: undefined,
@@ -315,8 +334,9 @@ export class AgentOrchestratorService {
     const remoteJid: string = key.remoteJid || '';
     if (remoteJid.endsWith('@g.us')) return null;
 
-    const remoteJidAlt: string = key.remoteJidAlt || '';
-    const senderPn: string = key.senderPn || data?.senderPn || '';
+    const remoteJidAlt: string = key.remoteJidAlt || data?.remoteJidAlt || '';
+    const senderPn: string =
+      key.senderPn || data?.senderPn || root?.senderPn || payload?.senderPn || '';
 
     // n8n: si remoteJid tiene @s.whatsapp.net usarlo; si no, remoteJidAlt o senderPn
     const replyToJid = remoteJid.includes('@s.whatsapp.net')
@@ -340,11 +360,22 @@ export class AgentOrchestratorService {
     }
 
     const phoneNumber = recipientJid.split('@')[0].replace(/[^0-9]/g, '');
-    if (!phoneNumber || phoneNumber.length < 10) {
+    const lidOnly =
+      (remoteJid.endsWith('@lid') || replyToJid.endsWith('@lid')) &&
+      !remoteJidAlt.includes('@s.whatsapp.net') &&
+      !senderPn?.replace(/[^0-9]/g, '');
+
+    if (!lidOnly && (!phoneNumber || phoneNumber.length < 10)) {
       this.logger.warn(
         `JID no resuelto a telefono valido remoteJid=${remoteJid} alt=${remoteJidAlt} senderPn=${senderPn}`,
       );
       return null;
+    }
+
+    if (lidOnly) {
+      this.logger.debug(
+        `[${root?.instance || payload?.instance || '?'}] Contacto solo @lid (${replyToJid}); se respondera al JID completo`,
+      );
     }
 
     const instance = root?.instance || payload?.instance || data?.instance || '';
@@ -364,6 +395,7 @@ export class AgentOrchestratorService {
       remoteJidAlt,
       replyToJid,
       senderPn: senderPn || undefined,
+      lidOnly: lidOnly || undefined,
       message: text,
       messageType: messageType || (msg.conversation ? 'conversation' : ''),
       instance,

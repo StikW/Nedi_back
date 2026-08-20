@@ -154,34 +154,48 @@ export class CourseModuleService {
       throw new NotFoundException('Module not found or does not belong to the specified course');
     }
 
-    // Prepare update expression
-    const updateExpression: string[] = [];
+    // Prepare update expression (SET non-empty fields, REMOVE cleared optional URLs)
+    const setParts: string[] = [];
+    const removeParts: string[] = [];
     const expressionAttributeNames: Record<string, string> = {};
     const expressionAttributeValues: Record<string, any> = {};
 
     Object.keys(updateModuleDto).forEach((key) => {
-      if (updateModuleDto[key as keyof UpdateCourseModuleDto] !== undefined) {
-        updateExpression.push(`#${key} = :${key}`);
-        expressionAttributeNames[`#${key}`] = key;
-        expressionAttributeValues[`:${key}`] = updateModuleDto[key as keyof UpdateCourseModuleDto];
+      const value = updateModuleDto[key as keyof UpdateCourseModuleDto];
+      if (value === undefined) return;
+
+      expressionAttributeNames[`#${key}`] = key;
+
+      if (value === '') {
+        removeParts.push(`#${key}`);
+        return;
       }
+
+      setParts.push(`#${key} = :${key}`);
+      expressionAttributeValues[`:${key}`] = value;
     });
 
-    // Add updatedAt
-    updateExpression.push('#updatedAt = :updatedAt');
+    setParts.push('#updatedAt = :updatedAt');
     expressionAttributeNames['#updatedAt'] = 'updatedAt';
     expressionAttributeValues[':updatedAt'] = new Date().toISOString();
 
-    if (updateExpression.length === 0) {
+    if (setParts.length === 0 && removeParts.length === 0) {
       return existingModule;
     }
+
+    const updateClauses = [
+      setParts.length > 0 ? `SET ${setParts.join(', ')}` : '',
+      removeParts.length > 0 ? `REMOVE ${removeParts.join(', ')}` : '',
+    ].filter(Boolean);
 
     await this.dynamoClient.send(new UpdateCommand({
       TableName: COURSE_MODULES_TABLE,
       Key: { id },
-      UpdateExpression: `SET ${updateExpression.join(', ')}`,
+      UpdateExpression: updateClauses.join(' '),
       ExpressionAttributeNames: expressionAttributeNames,
-      ExpressionAttributeValues: expressionAttributeValues,
+      ExpressionAttributeValues: Object.keys(expressionAttributeValues).length
+        ? expressionAttributeValues
+        : undefined,
       ReturnValues: 'ALL_NEW'
     }));
 
